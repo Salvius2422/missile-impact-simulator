@@ -375,11 +375,11 @@
           id="destQuery"
           class="input-box"
           placeholder="Search target city (e.g. Sonipat, Beijing, London)..."
-          oninput="onCityInput('destination')"
-          onkeydown="if(event.key === 'Enter'){ event.preventDefault(); searchCity('destination'); }"
+          oninput="onCityInput('dest')"
+          onkeydown="if(event.key === 'Enter'){ event.preventDefault(); searchCity('dest'); }"
           autocomplete="off"
         />
-        <button class="btn-search" onclick="searchCity('destination')" title="Search global cities">Search</button>
+        <button class="btn-search" onclick="searchCity('dest')" title="Search global cities">Search</button>
         <div id="destSuggestions" class="search-suggestions"></div>
       </div>
       <div class="selected-label" id="destLabel">Selected: None</div>
@@ -1173,20 +1173,32 @@
     }
 
     // City Search & Autocomplete Dropdown
+    function normalizeRole(role) {
+      return (role === "destination" || role === "dest") ? "dest" : "origin";
+    }
+
     let searchTimeout = null;
     function onCityInput(role) {
       clearTimeout(searchTimeout);
-      const query = document.getElementById(role + "Query").value.trim();
+      const prefix = normalizeRole(role);
+      const input = document.getElementById(prefix + "Query") || document.getElementById(role + "Query");
+      const suggestions = document.getElementById(prefix + "Suggestions") || document.getElementById(role + "Suggestions");
+      if (!input || !suggestions) return;
+
+      const query = input.value.trim();
       if (query.length < 2) {
-        document.getElementById(role + "Suggestions").style.display = "none";
+        suggestions.style.display = "none";
         return;
       }
-      searchTimeout = setTimeout(() => searchCity(role), 350);
+      searchTimeout = setTimeout(() => searchCity(prefix), 350);
     }
 
     async function searchCity(role) {
-      const input = document.getElementById(role + "Query");
-      const suggestions = document.getElementById(role + "Suggestions");
+      const prefix = normalizeRole(role);
+      const input = document.getElementById(prefix + "Query") || document.getElementById(role + "Query");
+      const suggestions = document.getElementById(prefix + "Suggestions") || document.getElementById(role + "Suggestions");
+      if (!input || !suggestions) return;
+
       const query = input.value.trim();
       if (!query) {
         suggestions.style.display = "none";
@@ -1221,7 +1233,7 @@
             item.onmousedown = (e) => {
               e.preventDefault();
               suggestions.style.display = "none";
-              if (role === "origin") {
+              if (prefix === "origin") {
                 setOrigin(c);
               } else {
                 setDestination(c);
