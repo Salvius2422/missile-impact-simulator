@@ -1,0 +1,1048 @@
+{
+  "missiles": [
+    {
+      "id": "agni_v",
+      "name": "Agni-V",
+      "country": "India",
+      "type": "Intercontinental Ballistic Missile (ICBM)",
+      "min_range_km": 1500,
+      "max_range_km": 5500,
+      "speed_mach": 24.0,
+      "conventional_yield_kt": 0.0015,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 250.0,
+      "source_url": "https://missilethreat.csis.org/missile/agni-5/",
+      "facts": [
+        "Three-stage solid-fueled road-mobile ICBM developed by India's DRDO.",
+        "Equipped with advanced ring-laser gyros and MIRV (Multiple Independently Targetable Reentry Vehicle) capability.",
+        "Reaches terminal speeds of approximately Mach 24 (nearly 29,400 km/h)."
+      ]
+    },
+    {
+      "id": "agni_iv",
+      "name": "Agni-IV",
+      "country": "India",
+      "type": "Intermediate-Range Ballistic Missile (IRBM)",
+      "min_range_km": 900,
+      "max_range_km": 4000,
+      "speed_mach": 7.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 40.0,
+      "source_url": "https://missilethreat.csis.org/missile/agni-4/",
+      "facts": [
+        "Two-stage solid-propellant ballistic missile bridging India's medium and intercontinental strike wings.",
+        "Features composite rocket motor casings for significantly lighter launch weight.",
+        "Re-entry heat shield withstands exterior friction temperatures above 4,000°C."
+      ]
+    },
+    {
+      "id": "agni_iii",
+      "name": "Agni-III",
+      "country": "India",
+      "type": "Intermediate-Range Ballistic Missile (IRBM)",
+      "min_range_km": 800,
+      "max_range_km": 3500,
+      "speed_mach": 5.0,
+      "conventional_yield_kt": 0.002,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 200.0,
+      "source_url": "https://missilethreat.csis.org/missile/agni-3/",
+      "facts": [
+        "Compact 17-meter two-stage solid-fuel missile designed for rapid deployment from rail launchers.",
+        "High payload capacity capable of carrying heavy nuclear warhead packages.",
+        "Forms the backbone of the Strategic Forces Command regional deterrence."
+      ]
+    },
+    {
+      "id": "agni_ii",
+      "name": "Agni-II",
+      "country": "India",
+      "type": "Medium-Range Ballistic Missile (MRBM)",
+      "min_range_km": 500,
+      "max_range_km": 2000,
+      "speed_mach": 4.5,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 150.0,
+      "source_url": "https://missilethreat.csis.org/missile/agni-2/",
+      "facts": [
+        "Two-stage solid-propellant road and rail mobile ballistic missile.",
+        "Features post-boost vehicle control fins for high-accuracy terminal trajectory correction.",
+        "Tested extensively with high operational reliability under the SFC."
+      ]
+    },
+    {
+      "id": "agni_prime",
+      "name": "Agni-Prime (Agni-P)",
+      "country": "India",
+      "type": "Medium-Range Ballistic Missile (MRBM)",
+      "min_range_km": 700,
+      "max_range_km": 2000,
+      "speed_mach": 6.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 100.0,
+      "source_url": "https://missilethreat.csis.org/missile/agni-p/",
+      "facts": [
+        "Next-generation canisterized solid-fuel missile that can be stored for years and launched on minutes' notice.",
+        "Features dual-redundant navigation and guidance systems with thrust-vector control.",
+        "Weighs 50% less than Agni-II despite having equivalent operational strike range."
+      ]
+    },
+    {
+      "id": "brahmos_er",
+      "name": "BrahMos Block-III / ER",
+      "country": "India",
+      "type": "Supersonic Cruise Missile",
+      "min_range_km": 10,
+      "max_range_km": 800,
+      "speed_mach": 2.8,
+      "conventional_yield_kt": 0.0003,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 10.0,
+      "source_url": "https://missilethreat.csis.org/missile/brahmos/",
+      "facts": [
+        "Joint Indo-Russian development and the world's fastest operational ramjet supersonic cruise missile.",
+        "Flies sea-skimming trajectories as low as 3 to 10 meters before an aggressive terminal dive.",
+        "Extended Range (ER) variant upgrades range to 800 km with precision radar seeker guidance."
+      ]
+    },
+    {
+      "id": "brahmos_ii",
+      "name": "BrahMos-II (Hypersonic)",
+      "country": "India",
+      "type": "Hypersonic Cruise Missile",
+      "min_range_km": 20,
+      "max_range_km": 1000,
+      "speed_mach": 7.0,
+      "conventional_yield_kt": 0.0003,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/BrahMos-II",
+      "facts": [
+        "Scramjet-powered hypersonic cruise missile engineered to cruise at Mach 7 to Mach 8.",
+        "Designed to penetrate dense anti-ballistic and air-defense radar umbrellas through pure velocity.",
+        "Kinetic energy upon impact amplifies damage significantly beyond chemical explosives."
+      ]
+    },
+    {
+      "id": "nirbhay",
+      "name": "Nirbhay",
+      "country": "India",
+      "type": "Subsonic Long-Range Cruise Missile",
+      "min_range_km": 50,
+      "max_range_km": 1000,
+      "speed_mach": 0.75,
+      "conventional_yield_kt": 0.00045,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 12.0,
+      "source_url": "https://missilethreat.csis.org/missile/nirbhay/",
+      "facts": [
+        "All-weather stealth subsonic land-attack cruise missile developed by ADE/DRDO.",
+        "Equipped with ring-laser gyro INS, GPS/NAVIC satellite guidance, and RF seeker for terminal accuracy.",
+        "Loiters over target zone before executing precision strike."
+      ]
+    },
+    {
+      "id": "pralay",
+      "name": "Pralay Tactical Ballistic",
+      "country": "India",
+      "type": "Quasi-Ballistic Tactical Missile",
+      "min_range_km": 150,
+      "max_range_km": 500,
+      "speed_mach": 6.1,
+      "conventional_yield_kt": 0.0007,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/Pralay_(missile)",
+      "facts": [
+        "Canisterized quasi-ballistic surface-to-surface missile designed for conventional battlefield strikes.",
+        "Performs mid-course maneuvers using aerodynamic thrusters to defeat interceptor air-defense systems.",
+        "Carries penetration, blast-fragmentation, and submunition warheads up to 1,000 kg."
+      ]
+    },
+    {
+      "id": "shaurya",
+      "name": "Shaurya Hypersonic",
+      "country": "India",
+      "type": "Hypersonic Surface-to-Surface Missile",
+      "min_range_km": 100,
+      "max_range_km": 750,
+      "speed_mach": 7.5,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 20.0,
+      "source_url": "https://missilethreat.csis.org/missile/shaurya/",
+      "facts": [
+        "Land-based derivative of India's Sagarika (K-15) submarine-launched ballistic missile.",
+        "Flies in the atmosphere at hypersonic speed, making radar detection and tracking exceedingly difficult.",
+        "Stored in composite canisters mounted on all-terrain road trucks."
+      ]
+    },
+    {
+      "id": "k4_slbm",
+      "name": "K-4 SLBM",
+      "country": "India",
+      "type": "Submarine-Launched Ballistic Missile (SLBM)",
+      "min_range_km": 500,
+      "max_range_km": 3500,
+      "speed_mach": 5.5,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 200.0,
+      "source_url": "https://missilethreat.csis.org/missile/k-4/",
+      "facts": [
+        "Nuclear-capable submarine-launched ballistic missile deployed aboard INS Arihant-class SSBNs.",
+        "Equipped with advanced 3D thrust vectoring control for vertical underwater ejection.",
+        "Provides India with a survivable, guaranteed second-strike nuclear deterrence capability."
+      ]
+    },
+    {
+      "id": "prithvi_ii",
+      "name": "Prithvi-II",
+      "country": "India",
+      "type": "Short-Range Ballistic Missile (SRBM)",
+      "min_range_km": 50,
+      "max_range_km": 350,
+      "speed_mach": 3.5,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 10.0,
+      "source_url": "https://missilethreat.csis.org/missile/prithvi-2/",
+      "facts": [
+        "First ballistic missile developed under India's Integrated Guided Missile Development Program (IGMDP).",
+        "Uses twin liquid-fuel rocket engines with advanced inertial strap-down guidance.",
+        "Capable of carrying conventional or nuclear warheads with CEP under 10 meters."
+      ]
+    },
+    {
+      "id": "minuteman_iii",
+      "name": "LGM-30G Minuteman III",
+      "country": "United States",
+      "type": "Intercontinental Ballistic Missile (ICBM)",
+      "min_range_km": 2000,
+      "max_range_km": 13000,
+      "speed_mach": 23.0,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 335.0,
+      "source_url": "https://missilethreat.csis.org/missile/minuteman-iii/",
+      "facts": [
+        "Forms the hardened silo-based land leg of the United States nuclear triad.",
+        "Capable of launching within 60 seconds of receiving authenticated presidential launch codes.",
+        "Carries the W78 (335 kt) or W87 (300 kt) thermonuclear warhead in a precision Mark 12A/21 RV."
+      ]
+    },
+    {
+      "id": "trident_ii_us",
+      "name": "UGM-133A Trident II D5 (US)",
+      "country": "United States",
+      "type": "Submarine-Launched Ballistic Missile (SLBM)",
+      "min_range_km": 2500,
+      "max_range_km": 12000,
+      "speed_mach": 24.0,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 455.0,
+      "source_url": "https://missilethreat.csis.org/missile/trident-ii-d5/",
+      "facts": [
+        "Deploys aboard Ohio-class ballistic missile submarines with extraordinary navigational accuracy.",
+        "Each missile can deploy up to 8 MIRV thermonuclear warheads (W76-1 90kt or W88 455kt).",
+        "Over 180 consecutive successful test flights, representing the gold standard of SLBM reliability."
+      ]
+    },
+    {
+      "id": "tomahawk_block_v",
+      "name": "BGM-109 Tomahawk Block V",
+      "country": "United States",
+      "type": "Long-Range Subsonic Cruise Missile",
+      "min_range_km": 50,
+      "max_range_km": 1600,
+      "speed_mach": 0.74,
+      "conventional_yield_kt": 0.00045,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/tomahawk/",
+      "facts": [
+        "Premier US long-range all-weather precision strike cruise missile launched from cruisers and submarines.",
+        "Uses GPS, TERCOM (Terrain Contour Matching), and optical DSMAC for sub-meter terminal accuracy.",
+        "Block V includes multi-mode seekers capable of striking moving maritime targets at sea."
+      ]
+    },
+    {
+      "id": "jassm_er",
+      "name": "AGM-158B JASSM-ER",
+      "country": "United States",
+      "type": "Air-Launched Stealth Cruise Missile",
+      "min_range_km": 30,
+      "max_range_km": 925,
+      "speed_mach": 0.82,
+      "conventional_yield_kt": 0.00045,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/jassm/",
+      "facts": [
+        "Low-observable radar-evading standoff missile carried by B-1B, B-52H, F-15E, F-16, and F-35.",
+        "Equipped with a dual-mode penetrator warhead designed to shatter hardened underground command bunkers.",
+        "Employs an imaging infrared (IIR) seeker that visually verifies the target prior to impact."
+      ]
+    },
+    {
+      "id": "hellfire",
+      "name": "AGM-114 Hellfire",
+      "country": "United States",
+      "type": "Tactical Air-to-Surface Missile",
+      "min_range_km": 0.5,
+      "max_range_km": 11,
+      "speed_mach": 1.3,
+      "conventional_yield_kt": 9e-06,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://www.lockheedmartin.com/en-us/products/hellfire-tactical-missiles.html",
+      "facts": [
+        "Precision laser-guided anti-armor and counter-insurgency missile fired from Apache helicopters and MQ-9 Reapers.",
+        "Carries an 8 kg shaped-charge tandem warhead designed to defeat explosive reactive armor.",
+        "Originally stood for 'Heliborne Laser, Fire-and-Forget Missile'."
+      ]
+    },
+    {
+      "id": "atacms",
+      "name": "MGM-140 ATACMS",
+      "country": "United States",
+      "type": "Tactical Ballistic Missile",
+      "min_range_km": 25,
+      "max_range_km": 300,
+      "speed_mach": 3.0,
+      "conventional_yield_kt": 0.00023,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/atacms/",
+      "facts": [
+        "Fired from M142 HIMARS and M270 MLRS tracked and wheeled mobile launchers.",
+        "Carries either a 227 kg unitary blast-frag warhead or APAM submunitions.",
+        "Flies a semi-ballistic trajectory using GPS and ring-laser gyros to avoid air defense systems."
+      ]
+    },
+    {
+      "id": "prsm",
+      "name": "Precision Strike Missile (PrSM)",
+      "country": "United States",
+      "type": "Next-Gen Tactical Ballistic Missile",
+      "min_range_km": 60,
+      "max_range_km": 500,
+      "speed_mach": 4.2,
+      "conventional_yield_kt": 0.00018,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/prsm/",
+      "facts": [
+        "US Army successor to ATACMS fitting two missiles per HIMARS launcher pod instead of one.",
+        "Compliant with the repealed INF Treaty limit, hitting pinpoint targets out to 500 km.",
+        "Capable of attacking surface warships and air defense batteries in contested anti-access environments."
+      ]
+    },
+    {
+      "id": "alcm_agm86",
+      "name": "AGM-86B ALCM",
+      "country": "United States",
+      "type": "Air-Launched Strategic Cruise Missile",
+      "min_range_km": 100,
+      "max_range_km": 2400,
+      "speed_mach": 0.73,
+      "conventional_yield_kt": 0.00045,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 150.0,
+      "source_url": "https://missilethreat.csis.org/missile/alcm/",
+      "facts": [
+        "Primary nuclear standoff cruise missile of the US Air Force B-52H Stratofortress fleet.",
+        "Carries the W80-1 variable-yield thermonuclear warhead (5 to 150 kt).",
+        "Navigates via terrain-following radar at tree-top level to stay under Soviet and modern air radars."
+      ]
+    },
+    {
+      "id": "sm3_intercept",
+      "name": "RIM-161 Standard Missile 3 (SM-3)",
+      "country": "United States",
+      "type": "Exoatmospheric Ballistic Missile Interceptor",
+      "min_range_km": 100,
+      "max_range_km": 2500,
+      "speed_mach": 15.0,
+      "conventional_yield_kt": 1e-06,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/defsys/sm-3/",
+      "facts": [
+        "Aegis Ballistic Missile Defense weapon capable of intercepting short to intermediate-range ballistic missiles in space.",
+        "Uses a Kinetic Warhead (hit-to-kill vehicle) with over 130 megajoules of structural kinetic impact energy.",
+        "Has successfully intercepted and destroyed decaying satellites in low Earth orbit."
+      ]
+    },
+    {
+      "id": "harpoon_us",
+      "name": "RGM-84 Harpoon Block II",
+      "country": "United States",
+      "type": "Anti-Ship Cruise Missile",
+      "min_range_km": 10,
+      "max_range_km": 280,
+      "speed_mach": 0.71,
+      "conventional_yield_kt": 0.00022,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/harpoon/",
+      "facts": [
+        "Standard anti-ship missile used by the US Navy and over 30 allied nations for four decades.",
+        "Employs active radar homing and low-altitude sea-skimming cruising profile.",
+        "Block II upgrades added GPS guidance enabling precision strikes on land-based coastal batteries."
+      ]
+    },
+    {
+      "id": "sarmat_satan2",
+      "name": "RS-28 Sarmat (Satan II)",
+      "country": "Russia",
+      "type": "Super-Heavy Thermonuclear ICBM",
+      "min_range_km": 3000,
+      "max_range_km": 18000,
+      "speed_mach": 20.7,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 800.0,
+      "source_url": "https://missilethreat.csis.org/missile/rs-28-sarmat/",
+      "facts": [
+        "World's largest liquid-fueled super-heavy ICBM weighing over 208 metric tons.",
+        "Capable of flying fractional orbital trajectories over the South Pole to bypass northern radar arcs.",
+        "Can carry up to 10 heavy MIRVs, 15 lighter MIRVs, or up to 3 Avangard hypersonic glide vehicles."
+      ]
+    },
+    {
+      "id": "yars_rs24",
+      "name": "RS-24 Yars",
+      "country": "Russia",
+      "type": "Road-Mobile Intercontinental Ballistic Missile",
+      "min_range_km": 2000,
+      "max_range_km": 11000,
+      "speed_mach": 20.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 500.0,
+      "source_url": "https://missilethreat.csis.org/missile/rs-24-yars/",
+      "facts": [
+        "Core of the Russian Strategic Rocket Forces mobile deterrent, carried on 16-wheeled MZKT transports.",
+        "Armed with 3 to 4 independently targetable MIRVs and advanced penetration decoy systems.",
+        "Solid propellant design allows rapid cold-launch from hidden forest dispersal areas."
+      ]
+    },
+    {
+      "id": "voyevoda_r36m2",
+      "name": "R-36M2 Voyevoda (SS-18 Satan)",
+      "country": "Russia",
+      "type": "Heavy Silo-Based ICBM",
+      "min_range_km": 2500,
+      "max_range_km": 16000,
+      "speed_mach": 22.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 1000.0,
+      "source_url": "https://missilethreat.csis.org/missile/ss-18/",
+      "facts": [
+        "Legendary Soviet heavy ICBM designed to eliminate hardened NATO missile silos and command bunkers.",
+        "Can carry a massive single 20-megaton city-buster warhead or 10 heavy thermonuclear MIRVs.",
+        "Housed in super-hardened silos rated to withstand direct near-miss nuclear overpressures."
+      ]
+    },
+    {
+      "id": "bulava_rsm56",
+      "name": "RSM-56 Bulava",
+      "country": "Russia",
+      "type": "Submarine-Launched Ballistic Missile (SLBM)",
+      "min_range_km": 1500,
+      "max_range_km": 9300,
+      "speed_mach": 18.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 150.0,
+      "source_url": "https://missilethreat.csis.org/missile/bulava/",
+      "facts": [
+        "Primary armament of Russia's Borei-class fourth-generation nuclear ballistic missile submarines.",
+        "Features low-trajectory flight capability and defensive decoys to confuse space tracking sensors.",
+        "Carries 6 to 10 maneuverable nuclear warheads with autonomous celestial guidance."
+      ]
+    },
+    {
+      "id": "iskander_m",
+      "name": "9M723 Iskander-M",
+      "country": "Russia",
+      "type": "Quasi-Ballistic Tactical Missile",
+      "min_range_km": 50,
+      "max_range_km": 500,
+      "speed_mach": 5.9,
+      "conventional_yield_kt": 0.00048,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 50.0,
+      "source_url": "https://missilethreat.csis.org/missile/ss-26-iskander/",
+      "facts": [
+        "Road-mobile quasi-ballistic missile capable of pulling 30g evasive maneuvers in terminal descent.",
+        "Employs optical and radar correlator seekers providing circular error probable (CEP) under 5 meters.",
+        "Can be fitted with thermonuclear, bunker-buster, EMP, or cluster munitions."
+      ]
+    },
+    {
+      "id": "kinzhal_kh47",
+      "name": "Kh-47M2 Kinzhal",
+      "country": "Russia",
+      "type": "Air-Launched Hypersonic Aeroballistic Missile",
+      "min_range_km": 100,
+      "max_range_km": 2000,
+      "speed_mach": 10.0,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 50.0,
+      "source_url": "https://missilethreat.csis.org/missile/kinzhal/",
+      "facts": [
+        "Launched at high altitude from MiG-31K interceptors and Tu-22M3 strategic bombers.",
+        "Accelerates to Mach 10 while retaining full aerodynamic control surface maneuvering.",
+        "Used operationally in Ukraine against high-value underground ammunition depots and command centers."
+      ]
+    },
+    {
+      "id": "zircon_3m22",
+      "name": "3M22 Zircon",
+      "country": "Russia",
+      "type": "Hypersonic Scramjet Cruise Missile",
+      "min_range_km": 50,
+      "max_range_km": 1000,
+      "speed_mach": 9.0,
+      "conventional_yield_kt": 0.0003,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 200.0,
+      "source_url": "https://en.wikipedia.org/wiki/3M22_Zircon",
+      "facts": [
+        "Fires from shipboard UKSK vertical launch systems and Yasen-M nuclear submarines.",
+        "Scramjet engine sustains Mach 8-9 flight within a plasma cloud that absorbs radar emissions.",
+        "Leaves modern shipboard close-in weapon systems (CIWS) virtually zero reaction window."
+      ]
+    },
+    {
+      "id": "kalibr_3m54",
+      "name": "3M-54 Kalibr",
+      "country": "Russia",
+      "type": "Land-Attack / Anti-Ship Cruise Missile",
+      "min_range_km": 30,
+      "max_range_km": 2500,
+      "speed_mach": 0.8,
+      "conventional_yield_kt": 0.00045,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 50.0,
+      "source_url": "https://missilethreat.csis.org/missile/kalibr/",
+      "facts": [
+        "Russia's counterpart to the US Tomahawk cruise missile, launched from frigates, corvettes, and subs.",
+        "Navigates around natural topographical contours to evade early warning radar networks.",
+        "Anti-ship variant features a supersonic Mach 2.9 rocket booster for the final 20 km sprint."
+      ]
+    },
+    {
+      "id": "kh101_stealth",
+      "name": "Kh-101 Stealth Cruise",
+      "country": "Russia",
+      "type": "Long-Range Air-Launched Stealth Cruise Missile",
+      "min_range_km": 100,
+      "max_range_km": 4500,
+      "speed_mach": 0.77,
+      "conventional_yield_kt": 0.0004,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/kh-101/",
+      "facts": [
+        "Strategic low-observable cruise missile with flattened radar-absorbent fuselage cross section.",
+        "Carried internally by Tu-160 Blackjack and externally by Tu-95MS Bear heavy bombers.",
+        "Employs Otblesk-U electro-optical scene matching system for final targeting accuracy."
+      ]
+    },
+    {
+      "id": "df41_china",
+      "name": "DF-41 (Dongfeng-41)",
+      "country": "China",
+      "type": "Road-Mobile Intercontinental Ballistic Missile",
+      "min_range_km": 3000,
+      "max_range_km": 15000,
+      "speed_mach": 25.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 1000.0,
+      "source_url": "https://missilethreat.csis.org/missile/df-41/",
+      "facts": [
+        "China's most powerful road and rail mobile solid-fuel intercontinental ballistic missile.",
+        "Operational strike range of 15,000 km covers the entire continental United States and Europe.",
+        "Can carry up to 10 MIRV nuclear warheads along with sophisticated chaff and decoy suites."
+      ]
+    },
+    {
+      "id": "df31ag_china",
+      "name": "DF-31AG",
+      "country": "China",
+      "type": "Road-Mobile Intercontinental Ballistic Missile",
+      "min_range_km": 2000,
+      "max_range_km": 11200,
+      "speed_mach": 20.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 500.0,
+      "source_url": "https://missilethreat.csis.org/missile/df-31/",
+      "facts": [
+        "Upgraded variant of DF-31 mounted on an 8-axle off-road all-terrain transporter-erector-launcher (TEL).",
+        "Can launch from unpaved roads and remote wilderness, vastly increasing survivability.",
+        "Equipped with MIRV technology and terminal maneuver capability."
+      ]
+    },
+    {
+      "id": "df26_guam_killer",
+      "name": "DF-26B (Guam Killer)",
+      "country": "China",
+      "type": "Intermediate-Range Ballistic Missile (IRBM)",
+      "min_range_km": 1000,
+      "max_range_km": 4000,
+      "speed_mach": 18.0,
+      "conventional_yield_kt": 0.0012,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 300.0,
+      "source_url": "https://missilethreat.csis.org/missile/df-26/",
+      "facts": [
+        "Hot-swappable dual-capable missile system supporting both conventional precision and nuclear warheads.",
+        "Nicknamed the 'Guam Killer' due to its ability to strike major US military bases in the second island chain.",
+        "Equipped with active radar terminal seeker capable of striking moving aircraft carriers."
+      ]
+    },
+    {
+      "id": "df21d_carrier_killer",
+      "name": "DF-21D (Carrier Killer)",
+      "country": "China",
+      "type": "Anti-Ship Ballistic Missile (ASBM)",
+      "min_range_km": 500,
+      "max_range_km": 1500,
+      "speed_mach": 10.0,
+      "conventional_yield_kt": 0.0006,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/df-21/",
+      "facts": [
+        "World's first operational anti-ship ballistic missile designed specifically to defeat aircraft carriers.",
+        "Terminal radar and optical seekers correlate the target position as the reentry vehicle dives at Mach 10.",
+        "Key pillar of China's Anti-Access/Area Denial (A2/AD) maritime strategy in the Western Pacific."
+      ]
+    },
+    {
+      "id": "df17_hgv",
+      "name": "DF-17 Hypersonic Glide Vehicle",
+      "country": "China",
+      "type": "Hypersonic Boost-Glide Weapon System",
+      "min_range_km": 500,
+      "max_range_km": 2500,
+      "speed_mach": 8.5,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 50.0,
+      "source_url": "https://missilethreat.csis.org/missile/df-17/",
+      "facts": [
+        "Boosted into high atmosphere by a ballistic rocket before detaching the DF-ZF hypersonic waverider.",
+        "Glides at extreme speeds through the upper atmosphere, executing unpredictably shaped lateral turns.",
+        "Renders traditional parabolic ballistic missile defense radars and interceptors largely ineffective."
+      ]
+    },
+    {
+      "id": "jl3_slbm",
+      "name": "JL-3 (Julang-3)",
+      "country": "China",
+      "type": "Submarine-Launched Ballistic Missile (SLBM)",
+      "min_range_km": 2000,
+      "max_range_km": 10000,
+      "speed_mach": 20.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 250.0,
+      "source_url": "https://missilethreat.csis.org/missile/jl-3/",
+      "facts": [
+        "China's third-generation intercontinental SLBM deployed on Type 094 and Type 096 SSBNs.",
+        "Allows Chinese submarines to strike targets in the continental United States from protected bastions in the South China Sea.",
+        "Carries up to 6 MIRV nuclear warheads."
+      ]
+    },
+    {
+      "id": "cj10_cruise",
+      "name": "CJ-10 (Changjian-10)",
+      "country": "China",
+      "type": "Land-Attack Subsonic Cruise Missile",
+      "min_range_km": 50,
+      "max_range_km": 2000,
+      "speed_mach": 0.75,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 20.0,
+      "source_url": "https://missilethreat.csis.org/missile/cj-10/",
+      "facts": [
+        "Long-range precision land-attack cruise missile developed by the Second Academy of CASIC.",
+        "Uses inertial guidance combined with BeiDou satellite navigation and scene matching.",
+        "Carries high-explosive unitary, thermobaric, or submunition warheads."
+      ]
+    },
+    {
+      "id": "m51_france",
+      "name": "M51 SLBM",
+      "country": "France",
+      "type": "Submarine-Launched Ballistic Missile (SLBM)",
+      "min_range_km": 2000,
+      "max_range_km": 10000,
+      "speed_mach": 25.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 150.0,
+      "source_url": "https://missilethreat.csis.org/missile/m51/",
+      "facts": [
+        "Forms the primary sea-based component of France's independent nuclear deterrent (Force de frappe).",
+        "Deployed aboard Triomphant-class nuclear ballistic submarines with 16 missiles per boat.",
+        "Carries 6 to 10 TNO (Tête Nucléaire Océanique) thermonuclear warheads per missile."
+      ]
+    },
+    {
+      "id": "asmpa_france",
+      "name": "ASMP-A",
+      "country": "France",
+      "type": "Air-Launched Supersonic Nuclear Cruise Missile",
+      "min_range_km": 50,
+      "max_range_km": 500,
+      "speed_mach": 3.0,
+      "conventional_yield_kt": 0.0003,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 300.0,
+      "source_url": "https://missilethreat.csis.org/missile/asmp/",
+      "facts": [
+        "Airborne leg of the French nuclear deterrent, carried exclusively by Dassault Rafale fighters.",
+        "Powered by an integral ramjet engine cruising at Mach 3 at high altitude or Mach 2 at sea level.",
+        "Designed to deliver an 'ultime avertissement' (final nuclear warning) strike."
+      ]
+    },
+    {
+      "id": "storm_shadow_scalp",
+      "name": "Storm Shadow / SCALP-EG",
+      "country": "France",
+      "type": "Air-Launched Low-Observable Cruise Missile",
+      "min_range_km": 30,
+      "max_range_km": 560,
+      "speed_mach": 0.8,
+      "conventional_yield_kt": 0.00045,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/storm-shadow-scalp-eg/",
+      "facts": [
+        "Joint UK-French long-range precision standoff weapon manufactured by MBDA.",
+        "Equipped with the BROACH two-stage bunker-penetrating warhead to defeat reinforced bridges and bunkers.",
+        "Used extensively by Ukraine with high interception resistance against Russian air defense systems."
+      ]
+    },
+    {
+      "id": "exocet_mm40",
+      "name": "Exocet MM40 Block 3",
+      "country": "France",
+      "type": "Anti-Ship Cruise Missile",
+      "min_range_km": 10,
+      "max_range_km": 200,
+      "speed_mach": 0.93,
+      "conventional_yield_kt": 0.000165,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/Exocet",
+      "facts": [
+        "One of the world's most famous combat-proven anti-ship missile systems.",
+        "Block 3 adds a turbojet engine extending range to 200 km and GPS waypoint coastal navigation.",
+        "Flies just 1 to 2 meters above wave crests during terminal attack to stay hidden from radar."
+      ]
+    },
+    {
+      "id": "trident_ii_uk",
+      "name": "Trident II D5 (United Kingdom)",
+      "country": "United Kingdom",
+      "type": "Submarine-Launched Ballistic Missile (SLBM)",
+      "min_range_km": 2500,
+      "max_range_km": 12000,
+      "speed_mach": 24.0,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 100.0,
+      "source_url": "https://missilethreat.csis.org/missile/trident-ii-d5/",
+      "facts": [
+        "Sole nuclear weapons system in the British armed forces, carried aboard Vanguard-class SSBNs.",
+        "Operated under Operation Relentless ensuring Continuous At-Sea Deterrence (CASD) since 1969.",
+        "Carries British-assembled thermonuclear warheads developed at AWE Aldermaston."
+      ]
+    },
+    {
+      "id": "aster_30_uk",
+      "name": "Sea Viper / Aster 30",
+      "country": "United Kingdom",
+      "type": "Naval Surface-to-Air / Anti-Missile",
+      "min_range_km": 3,
+      "max_range_km": 120,
+      "speed_mach": 4.5,
+      "conventional_yield_kt": 1.5e-05,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/Aster_(missile_family)",
+      "facts": [
+        "Primary anti-air and anti-missile defense weapon of the Royal Navy Type 45 Daring-class destroyers.",
+        "Features PIF-PAF lateral thrusters in the warhead section for 60g terminal intercept maneuvers.",
+        "Demonstrated successful combat intercepts against Houthi anti-ship ballistic missiles in the Red Sea."
+      ]
+    },
+    {
+      "id": "brimstone_uk",
+      "name": "Brimstone 2",
+      "country": "United Kingdom",
+      "type": "Precision Ground-Attack Tactical Missile",
+      "min_range_km": 1,
+      "max_range_km": 60,
+      "speed_mach": 1.3,
+      "conventional_yield_kt": 6e-06,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/Brimstone_(missile)",
+      "facts": [
+        "Dual-mode millimeter-wave radar and semi-active laser guided anti-armor missile.",
+        "Designed for salvo firing ('fire-and-forget') against moving armor formations with minimal collateral damage.",
+        "Deployed from Eurofighter Typhoon, fast attack boats, and ground-based mobile launchers."
+      ]
+    },
+    {
+      "id": "jericho_iii",
+      "name": "Jericho III",
+      "country": "Israel",
+      "type": "Intercontinental Ballistic Missile (ICBM)",
+      "min_range_km": 1500,
+      "max_range_km": 6500,
+      "speed_mach": 20.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 400.0,
+      "source_url": "https://missilethreat.csis.org/missile/jericho-3/",
+      "facts": [
+        "Three-stage solid-propellant ballistic missile forming the strategic backbone of Israel's nuclear deterrent.",
+        "Based in hardened underground caves and silos at Sdot Micha Airbase.",
+        "Capable of carrying a 1,000 kg thermonuclear warhead or 2-3 MIRVs across the Middle East, Europe, and Asia."
+      ]
+    },
+    {
+      "id": "popeye_turbo",
+      "name": "Popeye Turbo SLCM",
+      "country": "Israel",
+      "type": "Submarine-Launched Long-Range Cruise Missile",
+      "min_range_km": 50,
+      "max_range_km": 1500,
+      "speed_mach": 0.8,
+      "conventional_yield_kt": 0.00035,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 200.0,
+      "source_url": "https://en.wikipedia.org/wiki/Popeye_(missile)",
+      "facts": [
+        "Turbojet-powered strategic standoff missile deployed aboard Israeli Dolphin-class AIP submarines.",
+        "Equipped with a sealed nuclear warhead for survivable second-strike deterrence in the Mediterranean.",
+        "Fired through specially expanded 650 mm submarine torpedo tubes."
+      ]
+    },
+    {
+      "id": "delilah_israel",
+      "name": "Delilah Standoff",
+      "country": "Israel",
+      "type": "Loitering Standoff Cruise Missile",
+      "min_range_km": 15,
+      "max_range_km": 250,
+      "speed_mach": 0.7,
+      "conventional_yield_kt": 3e-05,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/Delilah_(missile)",
+      "facts": [
+        "Precision loitering missile designed to hunt mobile surface-to-air missile radar systems.",
+        "Features a man-in-the-loop electro-optical seeker allowing the operator to redirect or abort the attack.",
+        "Can loiter over the target area for extended duration before initiating a dive attack."
+      ]
+    },
+    {
+      "id": "khorramshahr_4",
+      "name": "Khorramshahr-4 (Kheibar)",
+      "country": "Iran",
+      "type": "Medium-Range Ballistic Missile (MRBM)",
+      "min_range_km": 500,
+      "max_range_km": 2000,
+      "speed_mach": 16.0,
+      "conventional_yield_kt": 0.0015,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/khorramshahr/",
+      "facts": [
+        "Iran's most advanced liquid-fueled ballistic missile powered by hypergolic storable propellants.",
+        "Reaches Mach 16 outside the atmosphere and Mach 8 inside the atmosphere during final dive.",
+        "Carries a massive 1,500 kg warhead with mid-course steering engines that eliminate radar detection fins."
+      ]
+    },
+    {
+      "id": "fattah_1",
+      "name": "Fattah-1 Hypersonic",
+      "country": "Iran",
+      "type": "Hypersonic Ballistic Missile",
+      "min_range_km": 300,
+      "max_range_km": 1400,
+      "speed_mach": 13.0,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/Fattah_(missile)",
+      "facts": [
+        "Unveiled by the IRGC Aerospace Force as Iran's first hypersonic missile with a movable nozzle reentry vehicle.",
+        "Claims terminal maneuvering velocity of Mach 13 to defeat Arrow-3 and Patriot interceptor systems.",
+        "Uses solid-propellant spherical rocket motor inside the warhead for high-altitude evasive bursts."
+      ]
+    },
+    {
+      "id": "sejjil_iran",
+      "name": "Sejjil-2",
+      "country": "Iran",
+      "type": "Medium-Range Ballistic Missile (MRBM)",
+      "min_range_km": 500,
+      "max_range_km": 2000,
+      "speed_mach": 14.0,
+      "conventional_yield_kt": 0.0007,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://missilethreat.csis.org/missile/sejjil/",
+      "facts": [
+        "Two-stage solid-propellant MRBM offering vastly superior launch readiness compared to liquid-fueled Shahab systems.",
+        "Requires minutes to prepare for launch from mobile TELs, minimizing pre-launch vulnerability.",
+        "High terminal velocity and steep reentry angle challenge regional missile defense systems."
+      ]
+    },
+    {
+      "id": "hwasong_17",
+      "name": "Hwasong-17 (Monster ICBM)",
+      "country": "North Korea",
+      "type": "Heavy Intercontinental Ballistic Missile",
+      "min_range_km": 3000,
+      "max_range_km": 15000,
+      "speed_mach": 22.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 500.0,
+      "source_url": "https://missilethreat.csis.org/missile/hwasong-17/",
+      "facts": [
+        "World's largest road-mobile liquid-fueled ICBM, carried on an 11-axle heavy transport vehicle.",
+        "Tested on lofted trajectories exceeding 6,000 km altitude, demonstrating full strike coverage of the United States.",
+        "Believed to be designed for carrying multiple nuclear warheads (MIRVs) and penetration aids."
+      ]
+    },
+    {
+      "id": "hwasong_15",
+      "name": "Hwasong-15",
+      "country": "North Korea",
+      "type": "Intercontinental Ballistic Missile (ICBM)",
+      "min_range_km": 2000,
+      "max_range_km": 13000,
+      "speed_mach": 20.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 300.0,
+      "source_url": "https://missilethreat.csis.org/missile/hwasong-15/",
+      "facts": [
+        "Two-stage liquid-propellant ICBM first launched successfully in November 2017.",
+        "Powered by twin gimballed combustion chamber rocket engines with vernier thrusters.",
+        "Capable of delivering a super-large heavy thermonuclear warhead to any location in North America."
+      ]
+    },
+    {
+      "id": "kn23_nk",
+      "name": "KN-23 (Hwasong-11Ga)",
+      "country": "North Korea",
+      "type": "Quasi-Ballistic Tactical Missile",
+      "min_range_km": 50,
+      "max_range_km": 690,
+      "speed_mach": 6.0,
+      "conventional_yield_kt": 0.0005,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 50.0,
+      "source_url": "https://missilethreat.csis.org/missile/kn-23/",
+      "facts": [
+        "Solid-fueled quasi-ballistic missile strongly resembling the Russian Iskander-M and South Korean Hyunmoo-2B.",
+        "Flies a depressed aero-ballistic trajectory with terminal pull-up maneuvers to escape radar tracking.",
+        "Exported and fired in active combat operations during European theater warfare."
+      ]
+    },
+    {
+      "id": "taepodong_2",
+      "name": "Taepodong-2 / Unha-3",
+      "country": "North Korea",
+      "type": "Multi-Stage Ballistic Missile / Space Launch",
+      "min_range_km": 4000,
+      "max_range_km": 10000,
+      "speed_mach": 21.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 200.0,
+      "source_url": "https://missilethreat.csis.org/missile/taepodong-2/",
+      "facts": [
+        "Three-stage liquid-fueled rocket based on clustered Nodong engine technology.",
+        "Demonstrated satellite orbital insertion capability in 2012 and 2016.",
+        "Serves as the structural design basis for early North Korean strategic ICBM development."
+      ]
+    },
+    {
+      "id": "hyunmoo_v",
+      "name": "Hyunmoo-V (Monster Missile)",
+      "country": "South Korea",
+      "type": "Heavy Bunker-Busting Ballistic Missile",
+      "min_range_km": 100,
+      "max_range_km": 3000,
+      "speed_mach": 10.0,
+      "conventional_yield_kt": 0.009,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/Hyunmoo",
+      "facts": [
+        "World's heaviest conventional ballistic warhead carrying up to 8 to 9 metric tons of high explosive.",
+        "Engineered to generate earth-penetrating kinetic shockwaves collapsing bunkers 100 meters underground.",
+        "Nicknamed the 'Monster Missile' of the Republic of Korea Armed Forces."
+      ]
+    },
+    {
+      "id": "taurus_kepd",
+      "name": "Taurus KEPD 350",
+      "country": "Germany",
+      "type": "Air-Launched Standoff Cruise Missile",
+      "min_range_km": 30,
+      "max_range_km": 500,
+      "speed_mach": 0.95,
+      "conventional_yield_kt": 0.00048,
+      "nuclear_capable": false,
+      "default_nuclear_yield_kt": 0.0,
+      "source_url": "https://en.wikipedia.org/wiki/Taurus_KEPD_350",
+      "facts": [
+        "Joint German-Swedish precision standoff cruise missile developed by Taurus Systems.",
+        "Equipped with MEPHISTO multi-stage penetrator warhead that counts void layers before detonation.",
+        "Operated by Germany, Spain, and South Korea for hardened bridge and command center neutralisation."
+      ]
+    },
+    {
+      "id": "k15_sagarika",
+      "name": "Sagarika (K-15) SLBM",
+      "country": "India",
+      "type": "Submarine-Launched Ballistic Missile (SLBM)",
+      "min_range_km": 50,
+      "max_range_km": 750,
+      "speed_mach": 5.0,
+      "conventional_yield_kt": 0.001,
+      "nuclear_capable": true,
+      "default_nuclear_yield_kt": 25.0,
+      "source_url": "https://missilethreat.csis.org/missile/k-15_sagarika/",
+      "facts": [
+        "Underwater-launched ballistic missile providing India's sea-based nuclear deterrence aboard INS Arihant.",
+        "Underwater gas booster launches the missile to the ocean surface before the rocket motor ignites.",
+        "Compact two-stage solid-fuel motor designed and manufactured by DRDO."
+      ]
+    }
+  ]
+}

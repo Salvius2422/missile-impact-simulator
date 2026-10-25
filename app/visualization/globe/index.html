@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-World Missile Impact Simulator — Global Defense Command</title>
+  <!-- CesiumJS CDN -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  
+  <style>
+    :root {
+      --bg-panel: rgba(15, 23, 42, 0.92);
+      --border-panel: rgba(56, 189, 248, 0.35);
+      --accent-cyan: #38bdf8;
+      --accent-green: #22c55e;
+      --accent-red: #ef4444;
+      --accent-gold: #f59e0b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body, #cesiumContainer {
+      width: 100%; height: 100%; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #020617; color: var(--text-main);
+      user-select: none;
+    }
+
+    /* Top Navigation / Brand Bar Overlay */
+    .top-header {
+      position: absolute; top: 12px; left: 16px; right: 16px; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg-panel); backdrop-filter: blur(14px);
+      border: 1px solid var(--border-panel); border-radius: 12px;
+      padding: 10px 18px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 16px; color: #fff; }
+    .brand-icon { font-size: 22px; filter: drop-shadow(0 0 8px var(--accent-cyan)); }
+    .brand-sub { font-size: 11px; color: var(--accent-cyan); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; }
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .btn-header {
+      background: #1e293b; color: #e2e8f0; border: 1px solid #475569;
+      padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s ease;
+    }
+    .btn-header:hover { background: #334155; color: #fff; border-color: var(--accent-cyan); }
+
+    /* Left Control Panel Overlay (Huge Command Overlay) */
+    .control-panel {
+      position: absolute; top: 74px; left: 16px; bottom: 20px; width: 440px; z-index: 40;
+      background: var(--bg-panel); backdrop-filter: blur(16px);
+      border: 1px solid var(--border-panel); border-radius: 12px;
+      padding: 16px; display: flex; flex-direction: column; gap: 12px;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.7); overflow-y: auto;
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .control-panel.collapsed {
+      transform: translateX(-470px);
+    }
+    .control-panel::-webkit-scrollbar { width: 5px; }
+    .control-panel::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+    /* Overlay Toggle Button */
+    .btn-panel-toggle {
+      position: absolute; top: 78px; left: 466px; z-index: 45;
+      background: #1e293b; color: var(--accent-cyan); border: 1px solid var(--border-panel);
+      padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700;
+      cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .btn-panel-toggle.collapsed {
+      left: 16px;
+    }
+
+    .panel-section {
+      background: rgba(30, 41, 59, 0.55); border: 1px solid rgba(51, 65, 85, 0.7);
+      border-radius: 8px; padding: 12px;
+    }
+    .section-title {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .title-origin { color: var(--accent-green); }
+    .title-dest { color: var(--accent-red); }
+    .title-config { color: var(--accent-cyan); }
+
+    /* Search & Inputs */
+    .input-row { display: flex; gap: 6px; position: relative; margin-bottom: 6px; }
+    .input-box {
+      flex: 1; background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+      padding: 7px 10px; color: #fff; font-size: 12px; outline: none;
+    }
+    .input-box:focus { border-color: var(--accent-cyan); }
+    .btn-search {
+      background: #2563eb; color: #fff; border: none; border-radius: 6px;
+      padding: 0 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .btn-search:hover { background: #1d4ed8; }
+
+    .btn-mode-toggle {
+      padding: 4px 8px; font-size: 11px; font-weight: 600; border-radius: 4px;
+      border: 1px solid #475569; background: #1e293b; color: #cbd5e1; cursor: pointer;
+    }
+    .btn-mode-toggle.active-origin { background: #16a34a; border-color: #22c55e; color: #fff; }
+    .btn-mode-toggle.active-dest { background: #dc2626; border-color: #ef4444; color: #fff; }
+
+    .search-suggestions {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
+      background: #090e17; border: 1px solid #38bdf8; border-radius: 8px;
+      max-height: 220px; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.9);
+      display: none; backdrop-filter: blur(12px);
+    }
+    .search-suggestions::-webkit-scrollbar { width: 5px; }
+    .search-suggestions::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    .suggestion-item {
+      padding: 9px 12px; font-size: 12px; color: #e2e8f0; cursor: pointer; border-bottom: 1px solid #1e293b;
+      transition: background 0.15s ease, border-left 0.15s ease;
+    }
+    .suggestion-item:last-child { border-bottom: none; }
+    .suggestion-item:hover {
+      background: #1e293b; color: #fff; border-left: 3px solid var(--accent-cyan);
+    }
+    .suggestion-header {
+      display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    }
+    .sugg-name { font-weight: 700; color: #fff; font-size: 12px; }
+    .sugg-badge {
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      padding: 1px 5px; border-radius: 3px; background: rgba(56, 189, 248, 0.2);
+      color: var(--accent-cyan); border: 1px solid rgba(56, 189, 248, 0.3);
+      white-space: nowrap;
+    }
+    .sugg-coords {
+      font-size: 10px; color: #94a3b8; margin-top: 3px; display: flex; align-items: center; gap: 8px;
+    }
+    .suggestion-status {
+      padding: 12px; font-size: 12px; text-align: center;
+    }
+
+    .selected-coords { font-size: 11px; color: var(--text-muted); line-height: 1.4; word-break: break-all; }
+    .selected-label { font-size: 12px; font-weight: 600; color: #e2e8f0; margin-bottom: 2px; }
+
+    /* Filter Row for 50+ Missiles */
+    .filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .form-group { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .select-box {
+      background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+      padding: 7px 8px; color: #fff; font-size: 12px; outline: none; cursor: pointer;
+    }
+    .select-box:focus { border-color: var(--accent-cyan); }
+    optgroup { background: #1e293b; color: var(--accent-cyan); font-weight: 700; }
+    option { background: #0f172a; color: #fff; font-weight: normal; }
+
+    /* Missile Spec Card */
+    .spec-card {
+      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+      padding: 10px; margin-top: 6px; margin-bottom: 8px; font-size: 11px; line-height: 1.5;
+    }
+    .spec-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+    .badge {
+      padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+    }
+    .badge-country { background: rgba(56, 189, 248, 0.2); border: 1px solid var(--accent-cyan); color: var(--accent-cyan); }
+    .badge-type { background: rgba(148, 163, 184, 0.2); border: 1px solid #64748b; color: #cbd5e1; }
+    .badge-nuke { background: rgba(220, 38, 38, 0.25); border: 1px solid #ef4444; color: #fca5a5; }
+    .badge-conv { background: rgba(245, 158, 11, 0.25); border: 1px solid #f59e0b; color: #fcd34d; }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 0; font-size: 12px; font-weight: 600;
+    }
+    .toggle-switch {
+      position: relative; width: 44px; height: 22px; cursor: pointer;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #334155; border-radius: 22px; transition: .2s;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px;
+      background-color: white; border-radius: 50%; transition: .2s;
+    }
+    input:checked + .slider { background-color: #dc2626; }
+    input:checked + .slider:before { transform: translateX(22px); }
+
+    /* Range Status Banner */
+    .range-banner {
+      padding: 10px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+      line-height: 1.4; display: flex; align-items: center; gap: 8px;
+    }
+    .range-banner.in-range {
+      background: rgba(22, 101, 52, 0.4); border: 1px solid #22c55e; color: #86efac;
+    }
+    .range-banner.out-range {
+      background: rgba(153, 27, 27, 0.45); border: 1px solid #ef4444; color: #fca5a5;
+    }
+    .range-banner.pending {
+      background: rgba(30, 41, 59, 0.7); border: 1px solid #475569; color: #cbd5e1;
+    }
+
+    /* Launch Button */
+    .btn-launch {
+      background: linear-gradient(135deg, #dc2626, #b91c1c); color: #fff;
+      border: 1px solid #ef4444; border-radius: 8px; padding: 14px;
+      font-size: 14px; font-weight: 800; letter-spacing: 0.5px; cursor: pointer;
+      box-shadow: 0 4px 16px rgba(220, 38, 38, 0.5); transition: all 0.2s ease;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-launch:hover {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      transform: translateY(-1px); box-shadow: 0 6px 22px rgba(220, 38, 38, 0.7);
+    }
+    .btn-launch:active {
+      transform: translateY(1px);
+    }
+
+    /* Floating Pop-up Modal Boxes */
+    .modal-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 100;
+      background: rgba(2, 6, 23, 0.70); backdrop-filter: blur(10px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+    }
+    .modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+    .modal-card {
+      background: #0f172a; border: 1px solid #334155; border-radius: 14px;
+      width: 760px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.85); padding: 22px;
+      display: flex; flex-direction: column; gap: 16px; position: relative;
+    }
+    .modal-card::-webkit-scrollbar { width: 6px; }
+    .modal-card::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #1e293b; padding-bottom: 12px;
+    }
+    .modal-title { font-size: 17px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
+    .btn-close {
+      background: transparent; border: none; color: #94a3b8; font-size: 20px;
+      cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    }
+    .btn-close:hover { color: #fff; background: #1e293b; }
+
+    /* Impact Report Grid */
+    .impact-badges {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    }
+    .stat-badge {
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;
+      text-align: center;
+    }
+    .stat-badge-val { font-size: 18px; font-weight: 800; color: var(--accent-cyan); }
+    .stat-badge-lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; }
+
+    .radii-list { display: flex; flex-direction: column; gap: 8px; }
+    .radius-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+    }
+    .radius-fireball { background: rgba(255, 255, 255, 0.1); border-left: 4px solid #ffffff; }
+    .radius-heavy { background: rgba(220, 38, 38, 0.2); border-left: 4px solid #dc2626; }
+    .radius-moderate { background: rgba(239, 68, 68, 0.2); border-left: 4px solid #ef4444; }
+    .radius-thermal { background: rgba(249, 115, 22, 0.2); border-left: 4px solid #f97316; }
+    .radius-light { background: rgba(234, 179, 8, 0.2); border-left: 4px solid #eab308; }
+
+    /* Chart Container inside Modal */
+    .chart-container {
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;
+    }
+    .chart-title { font-size: 12px; font-weight: 700; color: #cbd5e1; margin-bottom: 8px; }
+    .bar-row { margin-bottom: 8px; }
+    .bar-label-row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; margin-bottom: 3px; }
+    .bar-track { width: 100%; height: 12px; background: #0f172a; border-radius: 6px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 6px; transition: width 0.8s ease-out; }
+    .bar-fatalities { background: #dc2626; }
+    .bar-injuries { background: #f59e0b; }
+    .bar-structures { background: #64748b; }
+
+    /* Missile Facts */
+    .facts-box {
+      background: rgba(30, 41, 59, 0.4); border: 1px solid #334155; border-radius: 8px;
+      padding: 10px 14px; font-size: 12px; color: #cbd5e1; line-height: 1.5;
+    }
+    .facts-box li { margin-left: 16px; margin-bottom: 4px; }
+
+    .modal-footer {
+      display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #1e293b; padding-top: 12px;
+    }
+
+    /* On-Screen Toast Alerts */
+    .toast-overlay {
+      position: absolute; top: 78px; left: 50%; transform: translateX(-50%); z-index: 200;
+      background: rgba(15, 23, 42, 0.96); border: 1px solid var(--accent-gold);
+      color: #fff; padding: 12px 22px; border-radius: 10px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.85); display: none; align-items: center; gap: 12px;
+      font-weight: 600; font-size: 13px; backdrop-filter: blur(8px);
+      animation: fadeInDown 0.25s ease-out;
+    }
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translate(-50%, -10px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+
+  <!-- On-Screen Notification Toast -->
+  <div id="toastNotification" class="toast-overlay">
+    <span id="toastIcon" style="font-size: 20px;">⚠️</span>
+    <span id="toastMsg">Notification message</span>
+  </div>
+
+  <!-- Top Navigation & Global Header -->
+  <header class="top-header">
+    <div class="brand">
+      <span class="brand-icon">🎯</span>
+      <div>
+        <div>REAL-WORLD MISSILE IMPACT SIMULATOR</div>
+        <div class="brand-sub">58 Global Missiles Database & Automatic Public Population Engine</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-header" onclick="openLoadScenarioModal()">📂 Load Scenario</button>
+      <button class="btn-header" onclick="openSaveScenarioModal()">💾 Save Scenario</button>
+      <button class="btn-header" onclick="resetAll()">🔄 Reset</button>
+    </div>
+  </header>
+
+  <!-- Toggle HUD Panel Button -->
+  <button id="btnPanelToggle" class="btn-panel-toggle" onclick="toggleControlPanel()">◀ Minimise HUD</button>
+
+  <!-- Left Floating Control Panel Overlay (Huge Command Overlay) -->
+  <aside class="control-panel" id="controlPanel">
+    <!-- 1. Origin City -->
+    <div class="panel-section">
+      <div class="section-title title-origin">
+        <span>1. Origin City (Launch Site)</span>
+        <button id="btnPickOrigin" class="btn-mode-toggle active-origin" onclick="setPickMode('origin')">📍 Pick on Globe</button>
+      </div>
+      <div class="input-row">
+        <input
+          type="text"
+          id="originQuery"
+          class="input-box"
+          placeholder="Search launch city (e.g. New Delhi, Sonipat)..."
+          oninput="onCityInput('origin')"
+          onkeydown="if(event.key === 'Enter'){ event.preventDefault(); searchCity('origin'); }"
+          autocomplete="off"
+        />
+        <button class="btn-search" onclick="searchCity('origin')" title="Search global cities">Search</button>
+        <div id="originSuggestions" class="search-suggestions"></div>
+      </div>
+      <div class="selected-label" id="originLabel">Selected: None</div>
+      <div class="selected-coords" id="originCoords">Click Earth to place Green Origin Pin (Drag to revolve without selecting)</div>
+    </div>
+
+    <!-- 2. Destination City -->
+    <div class="panel-section">
+      <div class="section-title title-dest">
+        <span>2. Destination City (Target)</span>
+        <button id="btnPickDest" class="btn-mode-toggle" onclick="setPickMode('destination')">🎯 Pick on Globe</button>
+      </div>
+      <div class="input-row">
+        <input
+          type="text"
+          id="destQuery"
+          class="input-box"
+          placeholder="Search target city (e.g. Sonipat, Beijing, London)..."
+          oninput="onCityInput('destination')"
+          onkeydown="if(event.key === 'Enter'){ event.preventDefault(); searchCity('destination'); }"
+          autocomplete="off"
+        />
+        <button class="btn-search" onclick="searchCity('destination')" title="Search global cities">Search</button>
+        <div id="destSuggestions" class="search-suggestions"></div>
+      </div>
+      <div class="selected-label" id="destLabel">Selected: None</div>
+      <div class="selected-coords" id="destCoords">Click inside Cyan Circle for Red Target Pin</div>
+    </div>
+
+    <!-- 3. Missile System Selection (50+ Database & Filters) -->
+    <div class="panel-section">
+      <div class="section-title title-config">
+        <span>3. Missile System & Warhead</span>
+        <span id="missileCountBadge" style="font-size: 10px; color: var(--accent-cyan);">58 Missiles</span>
+      </div>
+      
+      <!-- Search & Filters -->
+      <div class="input-row">
+        <input type="text" id="missileSearchQuery" class="input-box" placeholder="Filter missiles (e.g. Agni, Hypersonic, Cruise)..." oninput="filterMissiles()" />
+      </div>
+
+      <div class="filter-grid">
+        <div class="form-group">
+          <label class="form-label">Country Filter</label>
+          <select id="countryFilter" class="select-box" onchange="filterMissiles()"></select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Warhead Type</label>
+          <select id="warheadFilter" class="select-box" onchange="filterMissiles()"></select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Select Missile System</label>
+        <select id="missileSelect" class="select-box" onchange="onMissileChanged()"></select>
+      </div>
+
+      <!-- Rich Missile Spec Card -->
+      <div class="spec-card" id="specCard">
+        <div class="spec-badges">
+          <span class="badge badge-country" id="specCountry">India</span>
+          <span class="badge badge-type" id="specType">ICBM</span>
+          <span class="badge badge-nuke" id="specNukeBadge">☢ Nuclear Capable</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; color: #cbd5e1; margin-bottom: 2px;">
+          <span>Range Envelope:</span>
+          <strong id="specRange" style="color: #fff;">1,500 km — 5,500 km</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; color: #cbd5e1;">
+          <span>Cruising Speed:</span>
+          <strong id="specSpeed" style="color: var(--accent-cyan);">Mach 24.0 (~29,400 km/h)</strong>
+        </div>
+      </div>
+
+      <!-- Warhead Configuration -->
+      <div class="toggle-row" id="nuclearToggleRow">
+        <span id="nukeToggleText">Equip Nuclear Warhead</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="nuclearToggle" checked onchange="onNuclearToggled()" />
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div id="convNotice" style="display: none; font-size: 11px; color: var(--accent-gold); margin-bottom: 6px; font-weight: 600;">
+        💥 Conventional-Only Weapon System (Fixed High-Explosive Warhead)
+      </div>
+
+      <div class="form-group" id="yieldGroup">
+        <label class="form-label">Nuclear Yield (kt TNT)</label>
+        <select id="yieldSelect" class="select-box">
+          <option value="1">1 kt (Tactical Mini-Nuke)</option>
+          <option value="10">10 kt (Tactical / BrahMos Nuclear)</option>
+          <option value="15">15 kt (Hiroshima Little Boy Benchmark)</option>
+          <option value="40">40 kt (Agni-IV Standard Yield)</option>
+          <option value="100">100 kt (Strategic Thermonuclear)</option>
+          <option value="250" selected>250 kt (Agni-V Standard Yield)</option>
+          <option value="335">335 kt (W78 Minuteman III)</option>
+          <option value="500">500 kt (RS-24 Yars / High-Yield)</option>
+          <option value="1000">1,000 kt (1 Megaton City-Buster)</option>
+        </select>
+      </div>
+
+      <!-- Automatic Public Database Population Indicator (No manual density prompt!) -->
+      <div class="form-group">
+        <label class="form-label">Target Urban Population (Live Public Database / Wi-Fi)</label>
+        <div id="targetPopLive" style="font-size: 11px; color: var(--accent-cyan); font-weight: 600; padding: 7px 10px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; line-height: 1.4;">
+          Auto-queried via OpenDataSoft / GeoNames & OSM when target is selected
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Range Status Banner -->
+    <div id="rangeBanner" class="range-banner pending">
+      <span>ℹ</span>
+      <span>Select Origin and Target on the 3D globe or search above.</span>
+    </div>
+
+    <!-- 5. Big Launch Button -->
+    <button id="btnLaunch" class="btn-launch" onclick="launchSimulation()">
+      <span>🚀</span>
+      <span>SIMULATE LAUNCH & IMPACT</span>
+    </button>
+  </aside>
+
+  <!-- Post-Impact Assessment Pop-Up Modal -->
+  <div class="modal-overlay" id="impactModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>💥</span>
+          <span id="modalReportTitle">Post-Impact Simulation Assessment</span>
+        </div>
+        <button class="btn-close" onclick="closeModal('impactModal')">✕</button>
+      </div>
+
+      <!-- Quick Metrics Badges -->
+      <div class="impact-badges">
+        <div class="stat-badge">
+          <div class="stat-badge-val" id="statFlightTime">-- min</div>
+          <div class="stat-badge-lbl">Est. Flight Duration</div>
+        </div>
+        <div class="stat-badge">
+          <div class="stat-badge-val" id="statDistance">-- km</div>
+          <div class="stat-badge-lbl">Impact Distance</div>
+        </div>
+        <div class="stat-badge">
+          <div class="stat-badge-val" id="statWarhead">--</div>
+          <div class="stat-badge-lbl">Warhead Mode</div>
+        </div>
+      </div>
+
+      <!-- Real-World Population Source Card -->
+      <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; font-size: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: 700; color: #fff;">🌍 Target Urban Population & Database Source</span>
+          <span style="font-size: 10px; color: var(--accent-cyan);" id="modalPopSource">Open Database (Live Wi-Fi)</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 4px; color: #cbd5e1;">
+          <span>Target Area: <b id="modalTargetCity" style="color: #fff;">--</b></span>
+          <span>Verified Population: <b id="modalCityPop" style="color: var(--accent-cyan);">--</b></span>
+        </div>
+      </div>
+
+      <!-- Concentric Blast Radii Breakdown -->
+      <div style="font-size: 13px; font-weight: 700; color: #fff;">Concentric Blast & Thermal Radii (Glasstone-Dolan Physics)</div>
+      <div class="radii-list">
+        <div class="radius-item radius-fireball">
+          <span>🔥 Fireball Vaporization Zone</span>
+          <span id="radFireball">-- km</span>
+        </div>
+        <div class="radius-item radius-heavy">
+          <span>💣 Heavy Blast Radius (20 psi Complete Destruction)</span>
+          <span id="radHeavy">-- km</span>
+        </div>
+        <div class="radius-item radius-moderate">
+          <span>🏢 Moderate Blast Radius (5 psi Structural Collapse)</span>
+          <span id="radModerate">-- km</span>
+        </div>
+        <div class="radius-item radius-thermal">
+          <span>☢ Thermal Radiation (3rd-Degree Burns)</span>
+          <span id="radThermal">-- km</span>
+        </div>
+        <div class="radius-item radius-light">
+          <span>🪟 Light Blast Radius (1 psi Window Breakage)</span>
+          <span id="radLight">-- km</span>
+        </div>
+      </div>
+
+      <!-- Casualty & Destruction Chart -->
+      <div class="chart-container">
+        <div class="chart-title">Estimated Humanitarian & Structural Casualties</div>
+        
+        <div class="bar-row">
+          <div class="bar-label-row">
+            <span style="color: #fca5a5;">Estimated Fatalities</span>
+            <span id="valFatalities" style="color: #fca5a5;">--</span>
+          </div>
+          <div class="bar-track"><div id="barFatalities" class="bar-fill bar-fatalities" style="width: 0%;"></div></div>
+        </div>
+
+        <div class="bar-row">
+          <div class="bar-label-row">
+            <span style="color: #fcd34d;">Estimated Injuries</span>
+            <span id="valInjuries" style="color: #fcd34d;">--</span>
+          </div>
+          <div class="bar-track"><div id="barInjuries" class="bar-fill bar-injuries" style="width: 0%;"></div></div>
+        </div>
+
+        <div class="bar-row">
+          <div class="bar-label-row">
+            <span style="color: #94a3b8;">Buildings / Structures Destroyed</span>
+            <span id="valStructures" style="color: #94a3b8;">--</span>
+          </div>
+          <div class="bar-track"><div id="barStructures" class="bar-fill bar-structures" style="width: 0%;"></div></div>
+        </div>
+      </div>
+
+      <!-- Missile Facts -->
+      <div style="font-size: 13px; font-weight: 700; color: #fff;">Missile Technical Specifications & Field Facts</div>
+      <div class="facts-box">
+        <ul id="factsList"></ul>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-header" style="background: #2563eb; color: #fff; border: none; padding: 10px 18px;" onclick="closeModal('impactModal')">
+          🔍 Inspect 3D Blast Rings on Globe
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Out-of-Range Warning Modal -->
+  <div class="modal-overlay" id="outOfRangeModal">
+    <div class="modal-card" style="width: 500px; border-color: #ef4444;">
+      <div class="modal-header">
+        <div class="modal-title" style="color: #fca5a5;">
+          <span>⛔</span>
+          <span>Target Outside Missile Operational Range</span>
+        </div>
+        <button class="btn-close" onclick="closeModal('outOfRangeModal')">✕</button>
+      </div>
+      <div style="font-size: 13px; line-height: 1.6; color: #e2e8f0;" id="outOfRangeMsg">
+        The destination is too far for the selected missile system.
+      </div>
+      <div class="modal-footer">
+        <button class="btn-header" style="background: #2563eb; color: #fff; border: none;" onclick="closeModal('outOfRangeModal')">
+          Understood
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save Scenario Modal -->
+  <div class="modal-overlay" id="saveModal">
+    <div class="modal-card" style="width: 440px;">
+      <div class="modal-header">
+        <div class="modal-title">💾 Save Simulation Scenario</div>
+        <button class="btn-close" onclick="closeModal('saveModal')">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Scenario Name</label>
+        <input type="text" id="scenarioNameInput" class="input-box" placeholder="e.g. Agni-V Delhi to Beijing Test" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn-header" onclick="closeModal('saveModal')">Cancel</button>
+        <button class="btn-header" style="background: #2563eb; color: #fff; border: none;" onclick="confirmSaveScenario()">Save to Database</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Scenario Modal -->
+  <div class="modal-overlay" id="loadModal">
+    <div class="modal-card" style="width: 580px;">
+      <div class="modal-header">
+        <div class="modal-title">📂 Load Saved Scenarios</div>
+        <button class="btn-close" onclick="closeModal('loadModal')">✕</button>
+      </div>
+      <div id="savedScenariosList" style="display: flex; flex-direction: column; gap: 8px; max-height: 350px; overflow-y: auto;">
+        <!-- Scenarios injected via JS -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn-header" onclick="closeModal('loadModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Cesium 3D Globe
+    Cesium.Ion.defaultAccessToken = "";
+    const esriProvider = new Cesium.UrlTemplateImageryProvider({
+      url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      credit: "Esri, Maxar, Earthstar Geographics"
+    });
+
+    let viewer;
+    try {
+      viewer = new Cesium.Viewer("cesiumContainer", {
+        baseLayer: new Cesium.ImageryLayer(esriProvider),
+        baseLayerPicker: false,
+        geocoder: false,
+        timeline: false,
+        animation: false,
+        sceneModePicker: true,
+        navigationHelpButton: false
+      });
+    } catch (e) {
+      viewer = new Cesium.Viewer("cesiumContainer", {
+        imageryProvider: esriProvider,
+        baseLayerPicker: false,
+        geocoder: false,
+        timeline: false,
+        animation: false,
+        sceneModePicker: true,
+        navigationHelpButton: false
+      });
+    }
+
+    // Application State
+    let missiles = [];
+    let filteredMissiles = [];
+    let selectedMissile = null;
+    let originPlace = null;
+    let destPlace = null;
+    let pickMode = "origin";
+    let inRange = false;
+    let currentDistance = 0;
+    let lastImpactData = null;
+
+    // Mouse Tracking State: Distinguish between Revolving Drag vs Stationary Click
+    let mouseDownPos = null;
+    let isDraggingPin = false;
+    let pinDraggedRole = null;
+
+    // Helper: Python API abstraction
+    async function callPython(method, ...args) {
+      if (window.pywebview && window.pywebview.api && typeof window.pywebview.api[method] === "function") {
+        return await window.pywebview.api[method](...args);
+      }
+      try {
+        const res = await fetch(`/api/${method}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(args)
+        });
+        return await res.json();
+      } catch (err) {
+        console.warn(`callPython failed for ${method}:`, err);
+        return null;
+      }
+    }
+
+    function showToast(title, message) {
+      const toast = document.getElementById("toastNotification");
+      document.getElementById("toastIcon").textContent = title.includes("⚠️") ? "⚠️" : (title.includes("❌") ? "❌" : "ℹ️");
+      document.getElementById("toastMsg").innerHTML = `<b>${title}:</b> ${message}`;
+      toast.style.display = "flex";
+      setTimeout(() => {
+        toast.style.display = "none";
+      }, 4500);
+    }
+
+    function showOutOfRangeModal(distKm, maxRangeKm, missileName) {
+      document.getElementById("outOfRangeMsg").innerHTML = `
+        <div style="margin-bottom: 10px;">The target is currently <b>${distKm.toLocaleString()} km</b> away.</div>
+        <div style="margin-bottom: 10px; color: #fca5a5;">
+          This exceeds <b>${missileName}</b>'s maximum operational range of <b>${maxRangeKm.toLocaleString()} km</b>.
+        </div>
+        <div style="font-size: 12px; color: #94a3b8; background: #1e293b; padding: 10px; border-radius: 6px;">
+          💡 <b>Recommended Actions:</b>
+          <ul style="margin-left: 20px; margin-top: 6px;">
+            <li>Click or drag the Red Target pin inside the <b>Cyan Range Circle</b>.</li>
+            <li>Or switch to an intercontinental missile (such as <b>Agni-V</b>, <b>Minuteman III</b>, or <b>RS-28 Sarmat</b>).</li>
+          </ul>
+        </div>
+      `;
+      openModal("outOfRangeModal");
+    }
+
+    function toggleControlPanel() {
+      const panel = document.getElementById("controlPanel");
+      const btn = document.getElementById("btnPanelToggle");
+      panel.classList.toggle("collapsed");
+      btn.classList.toggle("collapsed");
+      if (panel.classList.contains("collapsed")) {
+        btn.textContent = "▶ Expand HUD";
+      } else {
+        btn.textContent = "◀ Minimise HUD";
+      }
+    }
+
+    // Initialize application on load
+    async function initApp() {
+      const missileList = await callPython("get_missiles");
+      if (missileList && missileList.length) {
+        missiles = missileList;
+      }
+
+      // Dynamically populate country filter
+      const countryCounts = {};
+      missiles.forEach((m) => {
+        countryCounts[m.country] = (countryCounts[m.country] || 0) + 1;
+      });
+      const cSel = document.getElementById("countryFilter");
+      cSel.innerHTML = `<option value="ALL">All Countries (${missiles.length})</option>`;
+      Object.keys(countryCounts).sort().forEach((c) => {
+        const opt = document.createElement("option");
+        opt.value = c;
+        opt.textContent = `${c} (${countryCounts[c]})`;
+        cSel.appendChild(opt);
+      });
+
+      // Dynamically populate warhead filter
+      const nukeCount = missiles.filter((m) => m.nuclear_capable).length;
+      const convCount = missiles.length - nukeCount;
+      const wSel = document.getElementById("warheadFilter");
+      wSel.innerHTML = `
+        <option value="ALL">All Warhead Types (${missiles.length})</option>
+        <option value="NUCLEAR">☢ Nuclear-Capable (${nukeCount})</option>
+        <option value="CONVENTIONAL">💥 Conventional-Only (${convCount})</option>
+      `;
+
+      filterMissiles();
+
+      // Set default Origin to New Delhi
+      setOrigin({
+        label: "New Delhi, India",
+        longitude: 77.2090,
+        latitude: 28.6139,
+        attribution: "Default"
+      });
+    }
+
+    // Filter missiles by search query, country, and warhead
+    function filterMissiles() {
+      const query = (document.getElementById("missileSearchQuery").value || "").trim().toLowerCase();
+      const country = document.getElementById("countryFilter").value;
+      const warhead = document.getElementById("warheadFilter").value;
+
+      filteredMissiles = missiles.filter((m) => {
+        if (country !== "ALL" && m.country !== country) return false;
+        if (warhead === "NUCLEAR" && !m.nuclear_capable) return false;
+        if (warhead === "CONVENTIONAL" && m.nuclear_capable) return false;
+        if (query) {
+          const matchName = m.name.toLowerCase().includes(query);
+          const matchType = m.type.toLowerCase().includes(query);
+          const matchCountry = m.country.toLowerCase().includes(query);
+          if (!matchName && !matchType && !matchCountry) return false;
+        }
+        return true;
+      });
+
+      document.getElementById("missileCountBadge").textContent = `${filteredMissiles.length} of ${missiles.length} Missiles`;
+
+      const sel = document.getElementById("missileSelect");
+      sel.innerHTML = "";
+
+      const groups = {};
+      filteredMissiles.forEach((m) => {
+        if (!groups[m.country]) groups[m.country] = [];
+        groups[m.country].push(m);
+      });
+
+      for (const [cName, list] of Object.entries(groups)) {
+        const optgroup = document.createElement("optgroup");
+        optgroup.label = `── ${cName} (${list.length}) ──`;
+        list.forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          const nukeSymbol = m.nuclear_capable ? "☢" : "💥";
+          opt.textContent = `${nukeSymbol} ${m.name} — ${m.max_range_km.toLocaleString()} km (Mach ${m.speed_mach})`;
+          optgroup.appendChild(opt);
+        });
+        sel.appendChild(optgroup);
+      }
+
+      if (filteredMissiles.length > 0) {
+        sel.value = filteredMissiles[0].id;
+        selectedMissile = filteredMissiles[0];
+      } else {
+        selectedMissile = missiles[0];
+      }
+      onMissileChanged();
+    }
+
+    function setPickMode(mode) {
+      pickMode = mode;
+      document.getElementById("btnPickOrigin").className =
+        "btn-mode-toggle" + (mode === "origin" ? " active-origin" : "");
+      document.getElementById("btnPickDest").className =
+        "btn-mode-toggle" + (mode === "destination" ? " active-dest" : "");
+    }
+
+    function onMissileChanged() {
+      const id = document.getElementById("missileSelect").value;
+      selectedMissile = missiles.find((m) => m.id === id) || filteredMissiles[0] || missiles[0];
+
+      // Update Spec Card
+      document.getElementById("specCountry").textContent = selectedMissile.country;
+      document.getElementById("specType").textContent = selectedMissile.type;
+      document.getElementById("specRange").textContent = `${(selectedMissile.min_range_km || 0).toLocaleString()} km — ${selectedMissile.max_range_km.toLocaleString()} km`;
+      document.getElementById("specSpeed").textContent = `Mach ${selectedMissile.speed_mach} (~${Math.round(selectedMissile.speed_mach * 1225).toLocaleString()} km/h)`;
+
+      const nukeBadge = document.getElementById("specNukeBadge");
+      const nukeToggle = document.getElementById("nuclearToggle");
+      const nukeToggleRow = document.getElementById("nuclearToggleRow");
+      const convNotice = document.getElementById("convNotice");
+
+      if (!selectedMissile.nuclear_capable) {
+        nukeBadge.className = "badge badge-conv";
+        nukeBadge.textContent = "💥 Conventional-Only";
+        nukeToggle.checked = false;
+        nukeToggleRow.style.display = "none";
+        convNotice.style.display = "block";
+      } else {
+        nukeBadge.className = "badge badge-nuke";
+        nukeBadge.textContent = `☢ Nuclear Capable (Default ${selectedMissile.default_nuclear_yield_kt} kt)`;
+        nukeToggle.checked = true;
+        nukeToggleRow.style.display = "flex";
+        convNotice.style.display = "none";
+        document.getElementById("yieldSelect").value = String(selectedMissile.default_nuclear_yield_kt || 250);
+      }
+
+      onNuclearToggled();
+      updateRangeCheck();
+      renderGlobeEntities();
+    }
+
+    function onNuclearToggled() {
+      const isNuke = document.getElementById("nuclearToggle").checked && selectedMissile.nuclear_capable;
+      document.getElementById("yieldGroup").style.display = isNuke ? "flex" : "none";
+    }
+
+    // Coordinates conversion
+    function cartesianToLonLat(cartesian) {
+      if (!cartesian) return null;
+      const carto = Cesium.Cartographic.fromCartesian(cartesian);
+      return {
+        lon: Cesium.Math.toDegrees(carto.longitude),
+        lat: Cesium.Math.toDegrees(carto.latitude)
+      };
+    }
+
+    // Cesium Mouse Events: Differentiate Revolving the Globe vs Clicking to Select
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+    handler.setInputAction((movement) => {
+      mouseDownPos = Cesium.Cartesian2.clone(movement.position);
+      isDraggingPin = false;
+      pinDraggedRole = null;
+
+      // Check if clicking directly on an existing pin to drag it
+      const picked = viewer.scene.pick(movement.position);
+      if (Cesium.defined(picked) && picked.id && (picked.id.id === "origin_pin" || picked.id.id === "dest_pin")) {
+        isDraggingPin = true;
+        pinDraggedRole = picked.id.id === "origin_pin" ? "origin" : "destination";
+        viewer.scene.screenSpaceCameraController.enableRotate = false;
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+    handler.setInputAction((movement) => {
+      if (isDraggingPin && pinDraggedRole) {
+        const ray = viewer.camera.getPickRay(movement.endPosition);
+        const cartesian = viewer.scene.globe.pick(ray, viewer.scene);
+        const coords = cartesianToLonLat(cartesian);
+        if (coords) {
+          const entityId = pinDraggedRole === "origin" ? "origin_pin" : "dest_pin";
+          const entity = viewer.entities.getById(entityId);
+          if (entity) {
+            entity.position = Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat);
+          }
+        }
+      }
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    handler.setInputAction((movement) => {
+      // 1. If we were dragging an existing pin
+      if (isDraggingPin && pinDraggedRole) {
+        const role = pinDraggedRole;
+        isDraggingPin = false;
+        pinDraggedRole = null;
+        viewer.scene.screenSpaceCameraController.enableRotate = true;
+        const ray = viewer.camera.getPickRay(movement.position);
+        const cartesian = viewer.scene.globe.pick(ray, viewer.scene);
+        const coords = cartesianToLonLat(cartesian);
+        if (coords) {
+          handleGlobeClick(role, coords.lon, coords.lat);
+        }
+        mouseDownPos = null;
+        return;
+      }
+
+      // 2. If we were clicking on the globe (Check if user revolved or just clicked)
+      if (mouseDownPos) {
+        const distMoved = Cesium.Cartesian2.distance(mouseDownPos, movement.position);
+        mouseDownPos = null;
+
+        // If mouse moved >= 6 pixels, the user was revolving the Earth! Do NOT place any pin!
+        if (distMoved >= 6) {
+          return;
+        }
+
+        // Mouse moved < 6 pixels: This was a deliberate click & release!
+        const ray = viewer.camera.getPickRay(movement.position);
+        const cartesian = viewer.scene.globe.pick(ray, viewer.scene);
+        const coords = cartesianToLonLat(cartesian);
+        if (coords) {
+          handleGlobeClick(pickMode, coords.lon, coords.lat);
+          if (pickMode === "origin") setPickMode("destination");
+        }
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+    async function handleGlobeClick(role, lon, lat) {
+      const res = await callPython("reverse_geocode", lon, lat);
+      const place = res || {
+        label: `Point (${lat.toFixed(3)}°, ${lon.toFixed(3)}°)`,
+        longitude: lon,
+        latitude: lat
+      };
+      if (role === "origin") {
+        setOrigin(place);
+      } else {
+        setDestination(place);
+      }
+    }
+
+    function setOrigin(place) {
+      originPlace = place;
+      document.getElementById("originLabel").textContent = `Selected: ${place.label}`;
+      document.getElementById("originCoords").textContent = `Lon: ${place.longitude.toFixed(4)}° | Lat: ${place.latitude.toFixed(4)}°`;
+      document.getElementById("originQuery").value = place.label;
+      updateRangeCheck();
+      renderGlobeEntities();
+    }
+
+    async function setDestination(place) {
+      destPlace = place;
+      document.getElementById("destLabel").textContent = `Selected: ${place.label}`;
+      document.getElementById("destCoords").textContent = `Lon: ${place.longitude.toFixed(4)}° | Lat: ${place.latitude.toFixed(4)}°`;
+      document.getElementById("destQuery").value = place.label;
+
+      // Auto-query live population from open database over Wi-Fi
+      const popBox = document.getElementById("targetPopLive");
+      if (popBox) {
+        popBox.innerHTML = "<span>⏳</span> <span>Querying OpenDataSoft / GeoNames & OSM over Wi-Fi...</span>";
+        callPython("get_population", place.longitude, place.latitude, place.label).then((pop) => {
+          if (pop && pop.population !== undefined) {
+            popBox.innerHTML = `
+              <div style="font-size: 12px; color: #fff; font-weight: 700;">🌍 ${pop.place_name} (${pop.country})</div>
+              <div style="color: var(--accent-cyan); font-weight: 600; margin-top: 2px;">
+                Verified Population: <b>${pop.population.toLocaleString()}</b> &bull; Density: <b>${Math.round(pop.density_per_km2).toLocaleString()}/km²</b>
+              </div>
+              <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">Database: ${pop.data_source}</div>
+            `;
+          }
+        });
+      }
+
+      updateRangeCheck();
+      renderGlobeEntities();
+    }
+
+    // Great circle calculation (Haversine)
+    function calculateDistance(lon1, lat1, lon2, lat2) {
+      const R = 6371.0088;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return Math.round(R * c * 10) / 10;
+    }
+
+    function updateRangeCheck() {
+      const banner = document.getElementById("rangeBanner");
+
+      if (!originPlace || !destPlace) {
+        banner.className = "range-banner pending";
+        banner.innerHTML = "<span>ℹ</span><span>Select Origin and Target on the 3D globe or search above.</span>";
+        inRange = true;
+        return;
+      }
+
+      currentDistance = calculateDistance(
+        originPlace.longitude, originPlace.latitude,
+        destPlace.longitude, destPlace.latitude
+      );
+
+      const maxRange = selectedMissile.max_range_km;
+      if (currentDistance > maxRange) {
+        inRange = false;
+        banner.className = "range-banner out-range";
+        banner.innerHTML = `<span>⛔</span><span>OUT OF RANGE: Distance is <b>${currentDistance.toLocaleString()} km</b> (Max: ${maxRange.toLocaleString()} km). Launch locked!</span>`;
+      } else {
+        inRange = true;
+        banner.className = "range-banner in-range";
+        banner.innerHTML = `<span>✔</span><span>TARGET IN RANGE: <b>${currentDistance.toLocaleString()} km</b> / ${maxRange.toLocaleString()} km (${selectedMissile.name})</span>`;
+      }
+    }
+
+    // 3D Globe Render Entities
+    function renderGlobeEntities(launched = false, impact = null) {
+      viewer.entities.removeAll();
+
+      if (originPlace) {
+        viewer.entities.add({
+          id: "origin_pin",
+          position: Cesium.Cartesian3.fromDegrees(originPlace.longitude, originPlace.latitude),
+          point: { pixelSize: 14, color: Cesium.Color.LIMEGREEN, outlineColor: Cesium.Color.WHITE, outlineWidth: 2 },
+          label: {
+            text: "ORIGIN: " + originPlace.label,
+            font: "bold 13px Segoe UI",
+            fillColor: Cesium.Color.LIMEGREEN,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            outlineWidth: 3,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            pixelOffset: new Cesium.Cartesian2(0, -16)
+          }
+        });
+
+        // Max range cyan circle
+        if (selectedMissile && selectedMissile.max_range_km) {
+          const visualRadius = Math.min(selectedMissile.max_range_km, 9500) * 1000.0;
+          viewer.entities.add({
+            position: Cesium.Cartesian3.fromDegrees(originPlace.longitude, originPlace.latitude),
+            ellipse: {
+              semiMajorAxis: visualRadius,
+              semiMinorAxis: visualRadius,
+              material: Cesium.Color.DEEPSKYBLUE.withAlpha(0.12),
+              outline: true,
+              outlineColor: Cesium.Color.CYAN,
+              outlineWidth: 2,
+              height: 0
+            }
+          });
+        }
+      }
+
+      if (destPlace) {
+        const pinColor = inRange ? Cesium.Color.ORANGERED : Cesium.Color.RED;
+        const prefix = inRange ? "TARGET: " : "OUT OF RANGE: ";
+        viewer.entities.add({
+          id: "dest_pin",
+          position: Cesium.Cartesian3.fromDegrees(destPlace.longitude, destPlace.latitude),
+          point: { pixelSize: 14, color: pinColor, outlineColor: Cesium.Color.WHITE, outlineWidth: 2 },
+          label: {
+            text: prefix + destPlace.label,
+            font: "bold 13px Segoe UI",
+            fillColor: pinColor,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            outlineWidth: 3,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            pixelOffset: new Cesium.Cartesian2(0, -16)
+          }
+        });
+      }
+
+      if (originPlace && destPlace) {
+        const lineColor = inRange ? (launched ? Cesium.Color.GOLD : Cesium.Color.CYAN) : Cesium.Color.RED;
+        viewer.entities.add({
+          polyline: {
+            positions: Cesium.Cartesian3.fromDegreesArray([
+              originPlace.longitude, originPlace.latitude,
+              destPlace.longitude, destPlace.latitude
+            ]),
+            width: launched ? 4 : 3,
+            material: new Cesium.PolylineGlowMaterialProperty({
+              glowPower: 0.3,
+              color: lineColor
+            }),
+            clampToGround: false
+          }
+        });
+      }
+
+      // Render concentric blast rings upon impact
+      if (launched && impact && destPlace) {
+        const r = impact.radii_km;
+        const rings = [
+          { km: r.light_blast_1psi_km, color: Cesium.Color.YELLOW.withAlpha(0.20), border: Cesium.Color.YELLOW },
+          { km: r.thermal_3rd_deg_km, color: Cesium.Color.DARKORANGE.withAlpha(0.28), border: Cesium.Color.ORANGE },
+          { km: r.moderate_blast_5psi_km, color: Cesium.Color.RED.withAlpha(0.35), border: Cesium.Color.RED },
+          { km: r.heavy_blast_20psi_km, color: Cesium.Color.DARKRED.withAlpha(0.50), border: Cesium.Color.CRIMSON },
+          { km: r.fireball_km, color: Cesium.Color.WHITE.withAlpha(0.85), border: Cesium.Color.WHITE }
+        ];
+
+        rings.forEach((ring) => {
+          if (ring.km > 0) {
+            viewer.entities.add({
+              position: Cesium.Cartesian3.fromDegrees(destPlace.longitude, destPlace.latitude),
+              ellipse: {
+                semiMajorAxis: ring.km * 1000.0,
+                semiMinorAxis: ring.km * 1000.0,
+                material: ring.color,
+                outline: true,
+                outlineColor: ring.border,
+                height: 0
+              }
+            });
+          }
+        });
+
+        // Smooth camera fly-to
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(
+            destPlace.longitude,
+            destPlace.latitude,
+            Math.max(r.light_blast_1psi_km * 6500, 30000)
+          ),
+          duration: 1.8
+        });
+      }
+    }
+
+    // City Search & Autocomplete Dropdown
+    let searchTimeout = null;
+    function onCityInput(role) {
+      clearTimeout(searchTimeout);
+      const query = document.getElementById(role + "Query").value.trim();
+      if (query.length < 2) {
+        document.getElementById(role + "Suggestions").style.display = "none";
+        return;
+      }
+      searchTimeout = setTimeout(() => searchCity(role), 350);
+    }
+
+    async function searchCity(role) {
+      const input = document.getElementById(role + "Query");
+      const suggestions = document.getElementById(role + "Suggestions");
+      const query = input.value.trim();
+      if (!query) {
+        suggestions.style.display = "none";
+        return;
+      }
+
+      suggestions.innerHTML = `
+        <div class="suggestion-status" style="color: var(--accent-cyan);">
+          <div style="font-weight: 700;">⏳ Searching global database for "${query}"...</div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Querying OpenStreetMap / GeoNames over Wi-Fi</div>
+        </div>
+      `;
+      suggestions.style.display = "block";
+
+      try {
+        const res = await callPython("search_city", query);
+        if (res && res.success && res.candidates && res.candidates.length > 0) {
+          suggestions.innerHTML = "";
+          res.candidates.forEach((c) => {
+            const item = document.createElement("div");
+            item.className = "suggestion-item";
+            item.innerHTML = `
+              <div class="suggestion-header">
+                <span class="sugg-name">📍 ${c.label}</span>
+                <span class="sugg-badge">${c.attribution || "Global"}</span>
+              </div>
+              <div class="sugg-coords">
+                <span>Lat: <b>${c.latitude.toFixed(4)}°</b></span>
+                <span>Lon: <b>${c.longitude.toFixed(4)}°</b></span>
+              </div>
+            `;
+            item.onmousedown = (e) => {
+              e.preventDefault();
+              suggestions.style.display = "none";
+              if (role === "origin") {
+                setOrigin(c);
+              } else {
+                setDestination(c);
+              }
+              if (viewer && viewer.camera) {
+                viewer.camera.flyTo({
+                  destination: Cesium.Cartesian3.fromDegrees(c.longitude, c.latitude, 350000.0),
+                  duration: 1.5
+                });
+              }
+            };
+            suggestions.appendChild(item);
+          });
+          suggestions.style.display = "block";
+        } else {
+          const errText = (res && res.error) ? res.error : `No matching cities found for "${query}".`;
+          suggestions.innerHTML = `
+            <div class="suggestion-status" style="color: #fca5a5;">
+              <div style="font-weight: 700;">⚠️ ${errText}</div>
+              <div style="font-size: 10px; color: #cbd5e1; margin-top: 4px;">Try searching by alternative spelling, district, or country.</div>
+            </div>
+          `;
+          suggestions.style.display = "block";
+        }
+      } catch (err) {
+        suggestions.innerHTML = `
+          <div class="suggestion-status" style="color: #fca5a5;">
+            <div style="font-weight: 700;">⚠️ Geocoding search failed</div>
+            <div style="font-size: 10px; color: #cbd5e1; margin-top: 4px;">${err}</div>
+          </div>
+        `;
+        suggestions.style.display = "block";
+      }
+    }
+
+    // Simulate Launch & Impact
+    async function launchSimulation() {
+      if (!originPlace || !destPlace) {
+        showToast("⚠️ Target Required", "Please click on the 3D Earth (or search a city) to set the Target Point before launching.");
+        return;
+      }
+      if (!inRange) {
+        showOutOfRangeModal(currentDistance, selectedMissile.max_range_km, selectedMissile.name);
+        return;
+      }
+
+      const btn = document.getElementById("btnLaunch");
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<span>🛰️</span><span>FETCHING POPULATION & SIMULATING...</span>';
+
+      const isNuclear = document.getElementById("nuclearToggle").checked && selectedMissile.nuclear_capable;
+      const yieldKt = parseFloat(document.getElementById("yieldSelect").value || selectedMissile.default_nuclear_yield_kt || 250);
+
+      try {
+        const res = await callPython(
+          "simulate_launch",
+          originPlace,
+          destPlace,
+          selectedMissile.id,
+          isNuclear,
+          yieldKt
+        );
+
+        if (res && res.success) {
+          lastImpactData = res.impact;
+          renderGlobeEntities(true, res.impact);
+          displayImpactModal(res.impact, res.distance_km, res.population_info);
+        } else {
+          showToast("❌ Simulation Notice", (res && res.error) || "Simulation calculation could not be completed.");
+        }
+      } catch (err) {
+        showToast("❌ Error", "Simulation failed: " + err);
+      } finally {
+        btn.innerHTML = originalText;
+      }
+    }
+
+    function displayImpactModal(impact, distKm, popInfo) {
+      const r = impact.radii_km;
+      const est = impact.estimates;
+
+      document.getElementById("modalReportTitle").textContent =
+        `Post-Impact Assessment: ${selectedMissile.name} (${selectedMissile.country}) → ${destPlace.label}`;
+
+      document.getElementById("statFlightTime").textContent = `~${impact.flight_time_min} min`;
+      document.getElementById("statDistance").textContent = `${distKm.toLocaleString()} km`;
+      document.getElementById("statWarhead").textContent = impact.warhead_mode;
+
+      // Real Population Metrics
+      if (popInfo) {
+        document.getElementById("modalPopSource").textContent = popInfo.data_source || "Open Data";
+        document.getElementById("modalTargetCity").textContent = `${popInfo.place_name} (${popInfo.country})`;
+        document.getElementById("modalCityPop").textContent = `${popInfo.population.toLocaleString()} people (Density: ${Math.round(popInfo.density_per_km2).toLocaleString()}/km²)`;
+      } else {
+        document.getElementById("modalTargetCity").textContent = destPlace.label;
+        document.getElementById("modalCityPop").textContent = "Auto-Calculated";
+      }
+
+      document.getElementById("radFireball").textContent = `${(r.fireball_km * 1000).toLocaleString()} m (${r.fireball_km} km)`;
+      document.getElementById("radHeavy").textContent = `${r.heavy_blast_20psi_km} km`;
+      document.getElementById("radModerate").textContent = `${r.moderate_blast_5psi_km} km`;
+      document.getElementById("radThermal").textContent = `${r.thermal_3rd_deg_km} km`;
+      document.getElementById("radLight").textContent = `${r.light_blast_1psi_km} km`;
+
+      document.getElementById("valFatalities").textContent = `${est.estimated_fatalities.toLocaleString()} people`;
+      document.getElementById("valInjuries").textContent = `${est.estimated_injuries.toLocaleString()} people`;
+      document.getElementById("valStructures").textContent = `${est.structures_destroyed.toLocaleString()} structures`;
+
+      // Animate chart bars
+      const maxVal = Math.max(est.estimated_fatalities, est.estimated_injuries, est.structures_destroyed, 1);
+      setTimeout(() => {
+        document.getElementById("barFatalities").style.width = `${Math.min(100, (est.estimated_fatalities / maxVal) * 100)}%`;
+        document.getElementById("barInjuries").style.width = `${Math.min(100, (est.estimated_injuries / maxVal) * 100)}%`;
+        document.getElementById("barStructures").style.width = `${Math.min(100, (est.structures_destroyed / maxVal) * 100)}%`;
+      }, 50);
+
+      // Facts
+      const factsUl = document.getElementById("factsList");
+      factsUl.innerHTML = "";
+      (selectedMissile.facts || []).forEach((f) => {
+        const li = document.createElement("li");
+        li.textContent = f;
+        factsUl.appendChild(li);
+      });
+
+      openModal("impactModal");
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.add("active");
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove("active");
+    }
+
+    // Save & Load Scenarios
+    function openSaveScenarioModal() {
+      if (!originPlace || !destPlace) {
+        showToast("⚠️ Missing Selection", "Please set both Origin and Target before saving a scenario.");
+        return;
+      }
+      document.getElementById("scenarioNameInput").value = `${selectedMissile.name} (${selectedMissile.country}) ${originPlace.label} to ${destPlace.label}`;
+      openModal("saveModal");
+    }
+
+    async function confirmSaveScenario() {
+      const name = document.getElementById("scenarioNameInput").value.trim();
+      if (!name) return;
+
+      const isNuclear = document.getElementById("nuclearToggle").checked && selectedMissile.nuclear_capable;
+      const yieldKt = parseFloat(document.getElementById("yieldSelect").value);
+
+      const res = await callPython(
+        "save_scenario",
+        name,
+        originPlace.label,
+        originPlace.longitude,
+        originPlace.latitude,
+        destPlace.label,
+        destPlace.longitude,
+        destPlace.latitude,
+        selectedMissile.id,
+        isNuclear,
+        yieldKt,
+        0.0
+      );
+
+      closeModal("saveModal");
+      showToast("💾 Saved", res.message || "Scenario saved successfully to SQLite!");
+    }
+
+    async function openLoadScenarioModal() {
+      const list = await callPython("list_scenarios");
+      const container = document.getElementById("savedScenariosList");
+      container.innerHTML = "";
+
+      if (!list || !list.length) {
+        container.innerHTML = `<div style="color: #94a3b8; font-size: 13px; text-align: center; padding: 20px;">No saved scenarios in SQLite database yet.</div>`;
+      } else {
+        list.forEach((s) => {
+          const card = document.createElement("div");
+          card.style.background = "#1e293b";
+          card.style.border = "1px solid #334155";
+          card.style.borderRadius = "8px";
+          card.style.padding = "10px 14px";
+          card.style.cursor = "pointer";
+          card.innerHTML = `
+            <div style="font-weight: 700; color: #fff; font-size: 13px;">${s.scenario_name}</div>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
+              ${s.origin_city_label} ➔ ${s.destination_city_label} | Missile: ${s.selected_reference_record_id}
+            </div>
+          `;
+          card.onclick = () => {
+            loadScenarioObject(s);
+            closeModal("loadModal");
+          };
+          container.appendChild(card);
+        });
+      }
+      openModal("loadModal");
+    }
+
+    function loadScenarioObject(s) {
+      setOrigin({
+        label: s.origin_city_label,
+        longitude: s.origin_longitude,
+        latitude: s.origin_latitude
+      });
+      setDestination({
+        label: s.destination_city_label,
+        longitude: s.destination_longitude,
+        latitude: s.destination_latitude
+      });
+
+      if (s.selected_reference_record_id) {
+        document.getElementById("missileSelect").value = s.selected_reference_record_id;
+        onMissileChanged();
+      }
+
+      if (s.hypothetical_assessment_zone_parameters) {
+        try {
+          const p = JSON.parse(s.hypothetical_assessment_zone_parameters);
+          if (p.is_nuclear !== undefined) document.getElementById("nuclearToggle").checked = p.is_nuclear;
+          if (p.yield_kt) document.getElementById("yieldSelect").value = p.yield_kt;
+          onNuclearToggled();
+        } catch(e) {}
+      }
+
+      updateRangeCheck();
+      renderGlobeEntities();
+    }
+
+    function resetAll() {
+      originPlace = null;
+      destPlace = null;
+      document.getElementById("originLabel").textContent = "Selected: None";
+      document.getElementById("originCoords").textContent = "Click Earth to place Green Origin Pin";
+      document.getElementById("originQuery").value = "";
+      document.getElementById("destLabel").textContent = "Selected: None";
+      document.getElementById("destCoords").textContent = "Click inside Cyan Circle for Red Target Pin";
+      document.getElementById("destQuery").value = "";
+      document.getElementById("rangeBanner").className = "range-banner pending";
+      document.getElementById("rangeBanner").innerHTML = "<span>ℹ</span><span>Select Origin and Target on the 3D globe or search above.</span>";
+      document.getElementById("targetPopLive").innerHTML = "Auto-queried via OpenDataSoft / GeoNames & OSM when target is selected";
+      renderGlobeEntities();
+    }
+
+    // Close suggestions on outside click or Escape key
+    window.addEventListener("click", (e) => {
+      if (!e.target.closest(".input-row")) {
+        const oS = document.getElementById("originSuggestions");
+        const dS = document.getElementById("destSuggestions");
+        if (oS) oS.style.display = "none";
+        if (dS) dS.style.display = "none";
+      }
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        const oS = document.getElementById("originSuggestions");
+        const dS = document.getElementById("destSuggestions");
+        if (oS) oS.style.display = "none";
+        if (dS) dS.style.display = "none";
+      }
+    });
+
+    // Start
+    window.addEventListener("DOMContentLoaded", initApp);
+  </script>
+</body>
+</html>
