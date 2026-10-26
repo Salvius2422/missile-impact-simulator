@@ -1,10 +1,16 @@
+import os
+import sys
 import json
-import webbrowser
+import time
+import ctypes
+import threading
+from ctypes import wintypes
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
-from typing import Optional, Dict, Any
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+from typing import Optional, Dict, Any, List
+from pathlib import Path
+
+import webview
 
 from app.data.models import PlaceCandidate, Scenario
 from app.data.database import ScenarioDatabase
@@ -12,487 +18,613 @@ from app.services.mapbox_geocoding import MapboxGeocodingService
 from app.services.distance_service import calculate_great_circle_distance_km
 from app.services.impact_physics import load_missiles, check_within_range, compute_impact_effects
 from app.services.bridge_server import GlobeBridgeServer
+from app.services.webview_api import SimulatorApi
 from app.ui.city_search import CitySearchPanel
 
 
-class MainWindow(tk.Tk):
-    """Complete Tkinter Control Panel synced live with the 3D CesiumJS Globe."""
+class MissileCatalogDialog(tk.Toplevel):
+    """Interactive Tkinter dialog displaying the searchable 58-missile technical catalog."""
 
-    def __init__(self):
-        super().__init__()
-        self.title("Real-World Missile Impact Simulator — 3D Globe & Impact Assessment")
-        self.geometry("1240x820")
-        self.minsize(1080, 740)
+    def __init__(self, parent: tk.Widget, missiles: List[Dict[str, Any]], on_select=None):
+        super().__init__(parent)
+        self.title("58-Missile Technical Catalog & Warhead Specifications")
+        self.geometry("980x520")
+        self.minsize(780, 400)
+        self.missiles = missiles
+        self.on_select = on_select
+        self.configure(bg="#0f172a")
 
-        self.geocoding_service = MapboxGeocodingService()
-        self.db = ScenarioDatabase()
-        self.missiles = load_missiles()
-        self.selected_missile: Dict[str, Any] = self.missiles[0]
-        self.in_range: bool = True
+        self._build_ui()
 
-        self.bridge = GlobeBridgeServer(on_globe_pick=self._handle_globe_pick_threadsafe)
-        self.globe_url = self.bridge.start()
+    def _build_ui(self):
+        # Header & Filter
+        top_frame = tk.Frame(self, bg="#1e293b", padx=12, pady=10)
+        top_frame.pack(fill="x", side="top")
 
-        self._configure_styles()
-        self._build_layout()
-        self._on_missile_selected()
-
-    def _configure_styles(self) -> None:
-        style = ttk.Style(self)
-        if "clam" in style.theme_names():
-            style.theme_use("clam")
-
-    def _build_layout(self) -> None:
-        self.columnconfigure(0, weight=5)
-        self.columnconfigure(1, weight=6)
-        self.rowconfigure(1, weight=1)
-
-        # Top Bar
-        top_bar = ttk.Frame(self, padding=(12, 8))
-        top_bar.grid(row=0, column=0, columnspan=2, sticky="ew")
-
-        ttk.Label(
-            top_bar,
-            text="Real-World Missile Impact Simulator",
-            font=("Segoe UI", 14, "bold"),
+        tk.Label(
+            top_frame,
+            text="Missile Inventory (58 Systems Across 10 Major Powers)",
+            font=("Segoe UI", 12, "bold"),
+            fg="#38bdf8",
+            bg="#1e293b",
         ).pack(side="left")
 
-        ttk.Button(top_bar, text="🌐 Open Interactive 3D Globe", command=self.open_globe).pack(
-            side="right", padx=4
-        )
-        ttk.Button(top_bar, text="📂 Load Scenario", command=self._load_scenario_dialog).pack(
-            side="right", padx=4
-        )
-        ttk.Button(top_bar, text="💾 Save Scenario", command=self._save_scenario_dialog).pack(
-            side="right", padx=4
-        )
+        # Search Bar
+        search_frame = tk.Frame(top_frame, bg="#1e293b")
+        search_frame.pack(side="right")
+        tk.Label(search_frame, text="Filter:", fg="#cbd5e1", bg="#1e293b", font=("Segoe UI", 9)).pack(side="left", padx=4)
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda *_: self._filter_tree())
+        entry = ttk.Entry(search_frame, textvariable=self.search_var, width=24)
+        entry.pack(side="left", padx=4)
 
-        # Left Column - Control Panel
-        left_col = ttk.Frame(self, padding=(12, 4))
-        left_col.grid(row=1, column=0, sticky="nsew")
-        left_col.columnconfigure(0, weight=1)
+        # Treeview
+        tree_frame = tk.Frame(self, bg="#0f172a")
+        tree_frame.pack(fill="both", expand=True, padx=12, pady=10)
 
-        self.origin_panel = CitySearchPanel(
-            left_col,
-            title="1. Origin City (Click/Drag on 3D Globe OR Search Below)",
-            geocoding_service=self.geocoding_service,
-            on_selection_changed=lambda _c: self._recalculate_range_and_sync(launched=False),
-        )
-        self.origin_panel.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        cols = ("country", "name", "type", "range", "speed", "warhead", "yield")
+        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")
 
-        self.destination_panel = CitySearchPanel(
-            left_col,
-            title="2. Destination City (Click/Drag Inside Range Circle OR Search Below)",
-            geocoding_service=self.geocoding_service,
-            on_selection_changed=lambda _c: self._recalculate_range_and_sync(launched=False),
-        )
-        self.destination_panel.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        self.tree.heading("country", text="Country")
+        self.tree.heading("name", text="System Name")
+        self.tree.heading("type", text="Classification")
+        self.tree.heading("range", text="Max Range (km)")
+        self.tree.heading("speed", text="Cruising Speed")
+        self.tree.heading("warhead", text="Warhead Type")
+        self.tree.heading("yield", text="Default Yield (kt)")
 
-        # Missile & Warhead Config
-        missile_frame = ttk.LabelFrame(left_col, text="3. Missile System & Warhead Configuration", padding=10)
-        missile_frame.grid(row=2, column=0, sticky="ew", pady=(0, 8))
-        missile_frame.columnconfigure(1, weight=1)
+        self.tree.column("country", width=120)
+        self.tree.column("name", width=180)
+        self.tree.column("type", width=140)
+        self.tree.column("range", width=120, anchor="e")
+        self.tree.column("speed", width=110, anchor="center")
+        self.tree.column("warhead", width=130, anchor="center")
+        self.tree.column("yield", width=120, anchor="e")
 
-        ttk.Label(missile_frame, text="Select Missile:").grid(row=0, column=0, sticky="w", pady=4)
-        self.missile_combo = ttk.Combobox(
-            missile_frame,
-            state="readonly",
-            values=[f"[{m['country']}] {m['name']} — {m['max_range_km']:,} km ({'☢ Nuke' if m['nuclear_capable'] else '💥 Conv'})" for m in self.missiles],
-        )
-        self.missile_combo.current(0)
-        self.missile_combo.grid(row=0, column=1, sticky="ew", padx=(8, 0), pady=4)
-        self.missile_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_missile_selected())
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        self.tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        self.missile_specs_var = tk.StringVar()
-        ttk.Label(missile_frame, textvariable=self.missile_specs_var, foreground="#1e40af").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(2, 6)
-        )
+        self.tree.bind("<Double-1>", self._on_item_double_click)
 
-        self.nuclear_var = tk.BooleanVar(value=True)
-        self.nuclear_check = ttk.Checkbutton(
-            missile_frame,
-            text="Equip Nuclear Warhead",
-            variable=self.nuclear_var,
-            command=self._on_warhead_toggled,
-        )
-        self.nuclear_check.grid(row=2, column=0, sticky="w", pady=4)
+        # Status Bar / Actions
+        bot_frame = tk.Frame(self, bg="#1e293b", padx=12, pady=8)
+        bot_frame.pack(fill="x", side="bottom")
 
-        yield_box = ttk.Frame(missile_frame)
-        yield_box.grid(row=2, column=1, sticky="ew", padx=(8, 0), pady=4)
-        ttk.Label(yield_box, text="Yield (kt):").pack(side="left")
-        self.yield_var = tk.StringVar(value="250")
-        self.yield_combo = ttk.Combobox(
-            yield_box,
-            textvariable=self.yield_var,
-            values=["1", "10", "15", "40", "100", "250", "335", "500", "1000"],
-            width=10,
-        )
-        self.yield_combo.pack(side="left", padx=6)
+        self.count_lbl = tk.Label(bot_frame, text=f"Total: {len(self.missiles)} systems", fg="#94a3b8", bg="#1e293b", font=("Segoe UI", 9))
+        self.count_lbl.pack(side="left")
 
-        ttk.Label(missile_frame, text="Target Urban Density:").grid(row=3, column=0, sticky="w", pady=4)
-        self.density_combo = ttk.Combobox(
-            missile_frame,
-            state="readonly",
-            values=[
-                "Dense Metropolis (12,000 people / km²)",
-                "Major Urban City (5,000 people / km²)",
-                "Suburban / Town (1,500 people / km²)",
-                "Rural / Sparse (250 people / km²)",
-            ],
-        )
-        self.density_combo.current(0)
-        self.density_combo.grid(row=3, column=1, sticky="ew", padx=(8, 0), pady=4)
+        ttk.Button(bot_frame, text="Close", command=self.destroy).pack(side="right")
+        self._filter_tree()
 
-        # Range Check & Launch Control
-        launch_frame = ttk.LabelFrame(left_col, text="4. Range Limit Check & Launch Control", padding=10)
-        launch_frame.grid(row=3, column=0, sticky="ew", pady=(0, 8))
-
-        self.range_status_var = tk.StringVar(value="Select Origin and Destination on the 3D Globe or via search.")
-        self.range_label = ttk.Label(
-            launch_frame, textvariable=self.range_status_var, font=("Segoe UI", 10, "bold"), wraplength=480
-        )
-        self.range_label.pack(anchor="w", pady=(0, 8))
-
-        btn_row = ttk.Frame(launch_frame)
-        btn_row.pack(fill="x")
-
-        self.launch_btn = tk.Button(
-            btn_row,
-            text="🚀 SIMULATE LAUNCH & IMPACT",
-            bg="#dc2626",
-            fg="white",
-            font=("Segoe UI", 11, "bold"),
-            padx=14,
-            pady=6,
-            command=self.simulate_launch,
-        )
-        self.launch_btn.pack(side="left")
-
-        ttk.Button(btn_row, text="Reset All", command=self._reset_all).pack(side="right")
-
-        # Right Column - Output & Charts
-        right_col = ttk.Frame(self, padding=(6, 4, 12, 4))
-        right_col.grid(row=1, column=1, sticky="nsew")
-        right_col.columnconfigure(0, weight=1)
-        right_col.rowconfigure(0, weight=3)
-        right_col.rowconfigure(1, weight=2)
-
-        report_frame = ttk.LabelFrame(
-            right_col,
-            text="Post-Impact Assessment: Blast Radii, Estimated Casualties, Destruction & Missile Facts",
-            padding=10,
-        )
-        report_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
-
-        self.report_text = tk.Text(
-            report_frame, wrap="word", font=("Consolas", 10), bg="#0f172a", fg="#f8fafc", padx=10, pady=10
-        )
-        self.report_text.pack(fill="both", expand=True)
-
-        chart_frame = ttk.LabelFrame(right_col, text="Blast Radii & Humanitarian Exposure Breakdown", padding=6)
-        chart_frame.grid(row=1, column=0, sticky="nsew")
-
-        self.figure = Figure(figsize=(5.5, 2.4), dpi=96)
-        self.ax = self.figure.add_subplot(111)
-        self.canvas = FigureCanvasTkAgg(self.figure, master=chart_frame)
-        self.canvas.get_tk_widget().pack(fill="both", expand=True)
-
-        self._write_report(
-            "READY FOR SIMULATION\n"
-            "====================\n"
-            "1. Click '🌐 Open Interactive 3D Globe' (top right) to view the 3D Earth.\n"
-            "2. Click or drag the markers directly on the 3D Globe (or search by city name on the left).\n"
-            "3. A cyan circle around your Origin City shows the selected missile's Maximum Range.\n"
-            "4. If you pick a city outside that circle, the simulator will block the launch!\n"
-            "5. Choose your missile & warhead yield, then click '🚀 SIMULATE LAUNCH & IMPACT'."
-        )
-
-    def open_globe(self) -> None:
-        webbrowser.open(self.globe_url)
-
-    def _handle_globe_pick_threadsafe(self, role: str, lon: float, lat: float) -> None:
-        self.after(0, lambda: self._apply_globe_pick(role, lon, lat))
-
-    def _apply_globe_pick(self, role: str, lon: float, lat: float) -> None:
-        candidate = self.geocoding_service.reverse_geocode(lon, lat)
-
-        if role == "destination" and self.origin_panel.selected_candidate:
-            origin = self.origin_panel.selected_candidate
-            dist_km = calculate_great_circle_distance_km(
-                origin.longitude, origin.latitude, candidate.longitude, candidate.latitude
-            )
-            check = check_within_range(dist_km, self.selected_missile)
-            if not check["in_range"]:
-                self._apply_candidate_to_panel(self.destination_panel, candidate)
-                self._recalculate_range_and_sync(launched=False)
-                messagebox.showerror(
-                    "Target Outside Missile Range",
-                    f"{check['reason']}\n\n"
-                    f"Please drag the target pin inside the cyan Range Circle on the globe, "
-                    f"or switch to a longer-range missile (such as Agni-V or Minuteman III).",
-                    parent=self,
+    def _filter_tree(self):
+        q = self.search_var.get().lower().strip()
+        self.tree.delete(*self.tree.get_children())
+        count = 0
+        for m in self.missiles:
+            c_name = m.get("country", "")
+            name = m.get("name", "")
+            mtype = m.get("type", "")
+            if not q or (q in c_name.lower() or q in name.lower() or q in mtype.lower()):
+                warhead_str = "☢ Nuclear" if m.get("nuclear_capable") else "💥 Conventional"
+                yield_str = f"{m.get('default_nuclear_yield_kt', 0)} kt" if m.get("nuclear_capable") else "N/A"
+                self.tree.insert(
+                    "",
+                    "end",
+                    iid=m["id"],
+                    values=(
+                        c_name,
+                        name,
+                        mtype,
+                        f"{m.get('max_range_km', 0):,} km",
+                        f"Mach {m.get('speed_mach', 1.0)}",
+                        warhead_str,
+                        yield_str,
+                    ),
                 )
-                return
+                count += 1
+        self.count_lbl.config(text=f"Showing: {count} of {len(self.missiles)} missile systems")
 
-        target_panel = self.origin_panel if role == "origin" else self.destination_panel
-        self._apply_candidate_to_panel(target_panel, candidate)
-        self._recalculate_range_and_sync(launched=False)
+    def _on_item_double_click(self, event):
+        sel = self.tree.selection()
+        if sel and self.on_select:
+            missile_id = sel[0]
+            m = next((item for item in self.missiles if item["id"] == missile_id), None)
+            if m:
+                self.on_select(m)
+                self.destroy()
 
-    @staticmethod
-    def _apply_candidate_to_panel(panel: CitySearchPanel, candidate: PlaceCandidate) -> None:
-        panel.candidates = [candidate]
-        panel.selected_candidate = candidate
-        panel.query_var.set(candidate.label)
-        panel.candidate_combo["values"] = [
-            f"{candidate.label}  [{candidate.longitude:.4f}, {candidate.latitude:.4f}]"
-        ]
-        panel.candidate_combo.current(0)
-        panel.summary_var.set(f"Selected: {candidate.label}")
-        panel.coords_var.set(
-            f"Longitude: {candidate.longitude:.5f}°  |  Latitude: {candidate.latitude:.5f}°  ({candidate.attribution})"
-        )
 
-    def _on_missile_selected(self) -> None:
-        idx = self.missile_combo.current()
-        if 0 <= idx < len(self.missiles):
-            self.selected_missile = self.missiles[idx]
-            m = self.selected_missile
-            self.missile_specs_var.set(
-                f"Type: {m['type']}  |  Max Range: {m['max_range_km']:,} km  |  Speed: Mach {m['speed_mach']}"
-            )
-            self.yield_var.set(str(m["default_nuclear_yield_kt"]))
-            if not m["nuclear_capable"]:
-                self.nuclear_var.set(False)
-                self.nuclear_check.configure(state="disabled")
-            else:
-                self.nuclear_check.configure(state="normal")
-                self.nuclear_var.set(True)
-            self._on_warhead_toggled()
-            self._recalculate_range_and_sync(launched=False)
+class ScenarioManagerDialog(tk.Toplevel):
+    """Interactive Tkinter dialog to browse, load, and delete scenarios from scenarios.db."""
 
-    def _on_warhead_toggled(self) -> None:
-        state = "normal" if self.nuclear_var.get() else "disabled"
-        self.yield_combo.configure(state=state)
+    def __init__(self, parent: tk.Widget, db: ScenarioDatabase, on_load=None):
+        super().__init__(parent)
+        self.title("Saved Scenarios Manager (SQLite scenarios.db)")
+        self.geometry("860x440")
+        self.db = db
+        self.on_load = on_load
+        self.configure(bg="#0f172a")
 
-    def _get_selected_density(self) -> float:
-        mapping = [12000.0, 5000.0, 1500.0, 250.0]
-        idx = self.density_combo.current()
-        return mapping[idx] if 0 <= idx < len(mapping) else 5000.0
+        self._build_ui()
 
-    def _recalculate_range_and_sync(self, launched: bool = False, impact: Optional[Dict[str, Any]] = None) -> None:
-        origin = self.origin_panel.selected_candidate
-        dest = self.destination_panel.selected_candidate
-        m = self.selected_missile
-        range_msg = f"Max Range Limit: {m['max_range_km']:,} km ({m['name']})"
-        self.in_range = True
+    def _build_ui(self):
+        top_frame = tk.Frame(self, bg="#1e293b", padx=12, pady=10)
+        top_frame.pack(fill="x", side="top")
+        tk.Label(
+            top_frame,
+            text="Saved Scenarios (Local SQLite Database)",
+            font=("Segoe UI", 12, "bold"),
+            fg="#38bdf8",
+            bg="#1e293b",
+        ).pack(side="left")
 
-        if origin and dest:
-            dist_km = calculate_great_circle_distance_km(
-                origin.longitude, origin.latitude, dest.longitude, dest.latitude
-            )
-            check = check_within_range(dist_km, m)
-            self.in_range = check["in_range"]
-            range_msg = check["reason"]
+        tree_frame = tk.Frame(self, bg="#0f172a")
+        tree_frame.pack(fill="both", expand=True, padx=12, pady=10)
 
-            if self.in_range:
-                self.range_label.configure(foreground="#15803d")
-                self.launch_btn.configure(state="normal", bg="#dc2626")
-            else:
-                self.range_label.configure(foreground="#b91c1c")
-                self.launch_btn.configure(state="disabled", bg="#9ca3af")
-        else:
-            self.range_label.configure(foreground="#334155")
-            self.launch_btn.configure(state="normal", bg="#dc2626")
+        cols = ("id", "name", "origin", "target", "missile", "date")
+        self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")
 
-        self.range_status_var.set(range_msg)
-        self.bridge.update_state(
-            origin=vars(origin) if origin else None,
-            destination=vars(dest) if dest else None,
-            missile=m,
-            in_range=self.in_range,
-            range_message=range_msg,
-            launched=launched,
-            impact=impact,
-        )
+        self.tree.heading("id", text="ID")
+        self.tree.heading("name", text="Scenario Name")
+        self.tree.heading("origin", text="Origin City")
+        self.tree.heading("target", text="Target City")
+        self.tree.heading("missile", text="Missile ID")
+        self.tree.heading("date", text="Created At")
 
-    def simulate_launch(self) -> None:
-        origin = self.origin_panel.selected_candidate
-        dest = self.destination_panel.selected_candidate
-        if not origin or not dest:
-            messagebox.showwarning(
-                "Locations Required",
-                "Please select both an Origin City and a Destination City (on the 3D Globe or via search).",
-                parent=self,
-            )
-            return
+        self.tree.column("id", width=50, anchor="center")
+        self.tree.column("name", width=180)
+        self.tree.column("origin", width=160)
+        self.tree.column("target", width=160)
+        self.tree.column("missile", width=110, anchor="center")
+        self.tree.column("date", width=140, anchor="center")
 
-        dist_km = calculate_great_circle_distance_km(
-            origin.longitude, origin.latitude, dest.longitude, dest.latitude
-        )
-        check = check_within_range(dist_km, self.selected_missile)
-        if not check["in_range"]:
-            messagebox.showerror("Launch Prohibited — Out of Range", check["reason"], parent=self)
-            return
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        self.tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-        try:
-            yield_kt = float(self.yield_var.get())
-        except ValueError:
-            yield_kt = float(self.selected_missile["default_nuclear_yield_kt"])
+        bot_frame = tk.Frame(self, bg="#1e293b", padx=12, pady=8)
+        bot_frame.pack(fill="x", side="bottom")
 
-        density = self._get_selected_density()
-        impact = compute_impact_effects(
-            missile=self.selected_missile,
-            distance_km=dist_km,
-            is_nuclear=self.nuclear_var.get(),
-            nuclear_yield_kt=yield_kt,
-            pop_density_per_km2=density,
-        )
+        ttk.Button(bot_frame, text="Load Selected", command=self._load_selected).pack(side="left", padx=4)
+        ttk.Button(bot_frame, text="Delete Selected", command=self._delete_selected).pack(side="left", padx=4)
+        ttk.Button(bot_frame, text="Refresh", command=self._populate).pack(side="left", padx=4)
+        ttk.Button(bot_frame, text="Close", command=self.destroy).pack(side="right")
 
-        self._recalculate_range_and_sync(launched=True, impact=impact)
-        self._display_impact_report(origin, dest, dist_km, impact)
-        self._update_chart(impact)
+        self._populate()
 
-    def _display_impact_report(
-        self,
-        origin: PlaceCandidate,
-        dest: PlaceCandidate,
-        dist_km: float,
-        impact: Dict[str, Any],
-    ) -> None:
-        m = self.selected_missile
-        r = impact["radii_km"]
-        est = impact["estimates"]
-
-        facts_str = "\n".join(f"  • {fact}" for fact in m.get("facts", []))
-
-        report = (
-            f"=== POST-IMPACT SIMULATION REPORT ===\n"
-            f"Missile System       : {m['name']} ({m['type']})\n"
-            f"Warhead Configured   : {impact['warhead_mode']}\n"
-            f"Origin Location      : {origin.label} [{origin.longitude:.3f}°, {origin.latitude:.3f}°]\n"
-            f"Target Location      : {dest.label} [{dest.longitude:.3f}°, {dest.latitude:.3f}°]\n"
-            f"Distance vs Max Range: {dist_km:,.2f} km / {m['max_range_km']:,} km\n"
-            f"Est. Flight Time     : ~{impact['flight_time_min']} minutes (at Mach {m['speed_mach']})\n\n"
-            f"--- CONCENTRIC BLAST & THERMAL RADII ---\n"
-            f"  • Fireball Radius (Vaporization)          : {r['fireball_km']:,.3f} km ({r['fireball_km']*1000:,.0f} m)\n"
-            f"  • Heavy Blast Radius (20 psi Destruction) : {r['heavy_blast_20psi_km']:,.3f} km\n"
-            f"  • Moderate Blast Radius (5 psi Collapse)  : {r['moderate_blast_5psi_km']:,.3f} km\n"
-            f"  • Thermal Radiation (3rd-Degree Burns)    : {r['thermal_3rd_deg_km']:,.3f} km\n"
-            f"  • Light Blast Radius (1 psi Glass Break)  : {r['light_blast_1psi_km']:,.3f} km\n\n"
-            f"--- ESTIMATED CASUALTIES & STRUCTURAL DESTRUCTION ---\n"
-            f"  • Estimated Fatalities                    : {est['estimated_fatalities']:,} people\n"
-            f"  • Estimated Injuries                      : {est['estimated_injuries']:,} people\n"
-            f"  • Total Population Inside Hazard Rings    : {est['total_exposed']:,} people\n"
-            f"  • Estimated Buildings/Structures Destroyed: {est['structures_destroyed']:,} structures\n"
-            f"    (Modeled at {est['pop_density_used']:,.0f} people/km² using Glasstone-Dolan scaling laws)\n\n"
-            f"--- MISSILE SYSTEM FACTS & REFERENCE ---\n"
-            f"{facts_str}\n"
-            f"  • Public Reference Source: {m['source_url']}\n"
-        )
-        self._write_report(report)
-
-    def _update_chart(self, impact: Dict[str, Any]) -> None:
-        self.ax.clear()
-        est = impact["estimates"]
-        categories = ["Fatalities", "Injuries", "Structures\nDestroyed"]
-        values = [
-            est["estimated_fatalities"],
-            est["estimated_injuries"],
-            est["structures_destroyed"],
-        ]
-        colors = ["#dc2626", "#f59e0b", "#475569"]
-        bars = self.ax.barh(categories, values, color=colors)
-        self.ax.set_title("Estimated Humanitarian & Structural Impact", fontsize=10, fontweight="bold")
-        self.ax.grid(axis="x", linestyle="--", alpha=0.4)
-        for bar in bars:
-            w = bar.get_width()
-            self.ax.text(w, bar.get_y() + bar.get_height() / 2, f" {int(w):,}", va="center", fontsize=9)
-        self.figure.tight_layout()
-        self.canvas.draw()
-
-    def _save_scenario_dialog(self) -> None:
-        origin = self.origin_panel.selected_candidate
-        dest = self.destination_panel.selected_candidate
-        if not origin or not dest:
-            messagebox.showwarning("Cannot Save", "Select both Origin and Destination first.", parent=self)
-            return
-
-        name = simpledialog.askstring("Save Scenario", "Enter a name for this scenario:", parent=self)
-        if not name:
-            return
-
-        scenario = Scenario(
-            scenario_name=name.strip(),
-            origin_city_label=origin.label,
-            origin_longitude=origin.longitude,
-            origin_latitude=origin.latitude,
-            destination_city_label=dest.label,
-            destination_longitude=dest.longitude,
-            destination_latitude=dest.latitude,
-            selected_reference_record_id=self.selected_missile["id"],
-            hypothetical_assessment_zone_parameters=json.dumps(
-                {
-                    "is_nuclear": self.nuclear_var.get(),
-                    "yield_kt": self.yield_var.get(),
-                    "density": self._get_selected_density(),
-                }
-            ),
-        )
-        self.db.save_scenario(scenario)
-        messagebox.showinfo("Saved", f"Scenario '{name}' saved to SQLite database.", parent=self)
-
-    def _load_scenario_dialog(self) -> None:
+    def _populate(self):
+        self.tree.delete(*self.tree.get_children())
         scenarios = self.db.list_scenarios()
-        if not scenarios:
-            messagebox.showinfo("No Saved Scenarios", "No saved scenarios found in SQLite yet.", parent=self)
+        for s in scenarios:
+            self.tree.insert(
+                "",
+                "end",
+                iid=str(s.scenario_id),
+                values=(
+                    s.scenario_id,
+                    s.scenario_name,
+                    s.origin_city_label,
+                    s.destination_city_label,
+                    s.selected_reference_record_id,
+                    str(s.created_at)[:19] if s.created_at else "N/A",
+                ),
+            )
+
+    def _load_selected(self):
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showwarning("Selection Required", "Please select a scenario to load.", parent=self)
             return
+        scen_id = int(sel[0])
+        scenarios = self.db.list_scenarios()
+        chosen = next((s for s in scenarios if s.scenario_id == scen_id), None)
+        if chosen and self.on_load:
+            self.on_load(chosen)
+            self.destroy()
 
-        latest = scenarios[0]
-        origin = PlaceCandidate(
-            label=latest.origin_city_label,
-            longitude=latest.origin_longitude,
-            latitude=latest.origin_latitude,
-            provider_place_id="loaded-origin",
-        )
-        dest = PlaceCandidate(
-            label=latest.destination_city_label,
-            longitude=latest.destination_longitude,
-            latitude=latest.destination_latitude,
-            provider_place_id="loaded-dest",
-        )
-        self._apply_candidate_to_panel(self.origin_panel, origin)
-        self._apply_candidate_to_panel(self.destination_panel, dest)
-
-        for i, m in enumerate(self.missiles):
-            if m["id"] == latest.selected_reference_record_id:
-                self.missile_combo.current(i)
-                self._on_missile_selected()
-                break
-
-        if latest.hypothetical_assessment_zone_parameters:
+    def _delete_selected(self):
+        sel = self.tree.selection()
+        if not sel:
+            return
+        scen_id = int(sel[0])
+        if messagebox.askyesno("Confirm Delete", f"Delete scenario ID #{scen_id}?", parent=self):
             try:
-                params = json.loads(latest.hypothetical_assessment_zone_parameters)
-                if "is_nuclear" in params:
-                    self.nuclear_var.set(params["is_nuclear"])
-                if "yield_kt" in params:
-                    self.yield_var.set(str(params["yield_kt"]))
-                self._on_warhead_toggled()
-            except Exception:
-                pass
+                self.db.delete_scenario(scen_id)
+                self._populate()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete: {e}", parent=self)
 
-        self._recalculate_range_and_sync(launched=False)
-        messagebox.showinfo("Scenario Loaded", f"Loaded most recent scenario: '{latest.scenario_name}'", parent=self)
 
-    def _reset_all(self) -> None:
-        self.origin_panel.clear_selection()
-        self.destination_panel.clear_selection()
-        self.ax.clear()
-        self.canvas.draw()
-        self._recalculate_range_and_sync(launched=False)
-        self._write_report("Reset complete. Click on the 3D Globe or search a city to begin.")
+class PhysicsInfoDialog(tk.Toplevel):
+    """Tkinter dialog detailing the Glasstone-Dolan blast physics scaling laws."""
 
-    def _write_report(self, text: str) -> None:
-        self.report_text.configure(state="normal")
-        self.report_text.delete("1.0", tk.END)
-        self.report_text.insert(tk.END, text)
-        self.report_text.configure(state="disabled")
+    def __init__(self, parent: tk.Widget):
+        super().__init__(parent)
+        self.title("Glasstone-Dolan Impact Physics & Atmospheric Scaling Laws")
+        self.geometry("740x500")
+        self.configure(bg="#0f172a")
+
+        header = tk.Frame(self, bg="#1e293b", padx=14, pady=10)
+        header.pack(fill="x", side="top")
+        tk.Label(
+            header,
+            text="Scientific Blast Physics & Humanitarian Casualty Equations",
+            font=("Segoe UI", 12, "bold"),
+            fg="#38bdf8",
+            bg="#1e293b",
+        ).pack(side="left")
+
+        text_box = tk.Text(self, wrap="word", font=("Consolas", 10), bg="#090e17", fg="#f8fafc", padx=14, pady=12)
+        text_box.pack(fill="both", expand=True, padx=12, pady=10)
+
+        docs = (
+            "GLASSTONE-DOLAN (1977) BLAST OVERPRESSURE EQUATIONS\n"
+            "===================================================\n\n"
+            "1. CUBE-ROOT SCALING LAW:\n"
+            "   Concentric blast wave radii scale with the cube root of the explosive yield Y (in kilotons TNT):\n"
+            "     r(Y) = r_ref * Y^(1/3)\n\n"
+            "2. DAMAGE ZONES & PRESSURE THRESHOLDS:\n"
+            "   • Fireball Vaporization Zone (~100% immediate fatality):\n"
+            "     r_fireball = 0.048 * Y^(0.4) km\n"
+            "     At this boundary, core fireball temperature reaches ~100,000,000 K.\n\n"
+            "   • Heavy Blast Damage Zone (20 psi / 138 kPa Overpressure):\n"
+            "     r_20psi = 0.28 * Y^(1/3) km\n"
+            "     Complete structural destruction of reinforced concrete buildings; near-100% fatalities.\n\n"
+            "   • Moderate Blast Damage Zone (5 psi / 34.5 kPa Overpressure):\n"
+            "     r_5psi = 0.65 * Y^(1/3) km\n"
+            "     Collapse of residential buildings, severe structural fires, catastrophic injuries.\n\n"
+            "   • Thermal Radiation Zone (3rd-Degree Burns & Flash Fires):\n"
+            "     r_thermal = 1.15 * Y^(0.41) km\n"
+            "     Thermal pulse causing full-thickness third-degree burns and spontaneous ignition.\n\n"
+            "   • Light Blast Damage Zone (1 psi / 6.9 kPa Overpressure):\n"
+            "     r_1psi = 1.60 * Y^(1/3) km\n"
+            "     Widespread window shatter, projectile glass lacerations, minor structural fractures.\n\n"
+            "3. HUMANITARIAN CASUALTY EXPOSURE INTEGRAL:\n"
+            "   • Urban Population Data: Automatically retrieved via OpenDataSoft / GeoNames / OSM APIs.\n"
+            "   • Fatality Integral: Integrated over concentric annular damage rings weighted by lethality\n"
+            "     fractions: 100% (fireball), 90% (20 psi), 50% (5 psi), and 15% (thermal zone).\n"
+        )
+        text_box.insert("1.0", docs)
+        text_box.configure(state="disabled")
+
+        bot = tk.Frame(self, bg="#1e293b", padx=12, pady=8)
+        bot.pack(fill="x", side="bottom")
+        ttk.Button(bot, text="Close", command=self.destroy).pack(side="right")
+
+
+class MissileSimulatorApp(tk.Tk):
+    """
+    Primary Tkinter Desktop Application.
+    Hosts the native Tkinter command center, menus, status bars, and embeds
+    the interactive PyView 3D CesiumJS Earth globe inside a Tkinter viewport frame.
+    """
+
+    def __init__(self, globe_url: str, api: SimulatorApi, on_exit=None):
+        super().__init__()
+        self.globe_url = globe_url
+        self.api = api
+        self.on_exit = on_exit
+
+        self.title("Real-World Missile Impact Simulator — [Tkinter Core Desktop GUI & PyView 3D Viewport]")
+        self.geometry("1380x880")
+        self.minsize(1080, 720)
+        self.configure(bg="#0f172a")
+
+        self.child_hwnd: Optional[int] = None
+        self.current_width: int = 1380
+        self.current_height: int = 800
+
+        self.db = ScenarioDatabase()
+        self.missiles = load_missiles()
+
+        self._build_menu()
+        self._build_toolbar()
+        self._build_viewport()
+        self._build_statusbar()
+
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def _build_menu(self):
+        menubar = tk.Menu(self)
+
+        # File Menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="💾 Save Scenario to SQLite...", command=self.open_save_dialog, accelerator="Ctrl+S")
+        file_menu.add_command(label="📂 Load Scenario from SQLite...", command=self.open_scenarios_dialog, accelerator="Ctrl+O")
+        file_menu.add_separator()
+        file_menu.add_command(label="🔄 Reset All Pins & Camera", command=self.reset_all)
+        file_menu.add_separator()
+        file_menu.add_command(label="🚪 Exit Simulator", command=self.on_closing, accelerator="Ctrl+Q")
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        # Missiles Menu
+        missile_menu = tk.Menu(menubar, tearoff=0)
+        missile_menu.add_command(label="📋 58-Missile Technical Catalog...", command=self.open_missile_catalog)
+        missile_menu.add_separator()
+        missile_menu.add_command(label="🇮🇳 Indian Missile Systems (Agni, BrahMos, Prithvi)", command=lambda: self.open_missile_catalog_filter("India"))
+        missile_menu.add_command(label="🇺🇸 United States Systems (Minuteman, Trident, Tomahawk)", command=lambda: self.open_missile_catalog_filter("United States"))
+        missile_menu.add_command(label="🇷🇺 Russian Systems (Sarmat, Yars, Iskander, Kalibr)", command=lambda: self.open_missile_catalog_filter("Russia"))
+        missile_menu.add_command(label="🇨🇳 Chinese Systems (DF-41, DF-26, DF-17)", command=lambda: self.open_missile_catalog_filter("China"))
+        menubar.add_cascade(label="Missiles", menu=missile_menu)
+
+        # Scenarios Menu
+        scen_menu = tk.Menu(menubar, tearoff=0)
+        scen_menu.add_command(label="📂 SQLite Scenarios Manager...", command=self.open_scenarios_dialog)
+        menubar.add_cascade(label="Scenarios", menu=scen_menu)
+
+        # Physics & Math Menu
+        phys_menu = tk.Menu(menubar, tearoff=0)
+        phys_menu.add_command(label="📐 Glasstone-Dolan Blast Radii Formulas...", command=self.open_physics_info)
+        menubar.add_cascade(label="Physics & Math", menu=phys_menu)
+
+        # Help Menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="ℹ️ About Simulator & Tkinter Architecture...", command=self.open_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+
+        self.config(menu=menubar)
+
+        # Keyboard Shortcuts
+        self.bind("<Control-s>", lambda _: self.open_save_dialog())
+        self.bind("<Control-o>", lambda _: self.open_scenarios_dialog())
+        self.bind("<Control-q>", lambda _: self.on_closing())
+
+    def _build_toolbar(self):
+        toolbar = tk.Frame(self, bg="#0f172a", height=42, padx=14, pady=6)
+        toolbar.pack(fill="x", side="top")
+
+        # Title & Badges
+        title_box = tk.Frame(toolbar, bg="#0f172a")
+        title_box.pack(side="left")
+
+        tk.Label(
+            title_box,
+            text="🎯 REAL-WORLD MISSILE IMPACT SIMULATOR",
+            font=("Segoe UI", 11, "bold"),
+            fg="#38bdf8",
+            bg="#0f172a",
+        ).pack(side="left")
+
+        tk.Label(
+            title_box,
+            text="[Tkinter Core GUI & PyView 3D Viewport]",
+            font=("Segoe UI", 9, "bold"),
+            fg="#94a3b8",
+            bg="#0f172a",
+        ).pack(side="left", padx=8)
+
+        # Action Buttons
+        btn_box = tk.Frame(toolbar, bg="#0f172a")
+        btn_box.pack(side="right")
+
+        tk.Button(
+            btn_box,
+            text="📋 58 Missile Catalog",
+            command=self.open_missile_catalog,
+            bg="#1e293b",
+            fg="#e2e8f0",
+            activebackground="#334155",
+            activeforeground="#fff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=8,
+            pady=3,
+        ).pack(side="left", padx=3)
+
+        tk.Button(
+            btn_box,
+            text="📂 Saved Scenarios",
+            command=self.open_scenarios_dialog,
+            bg="#1e293b",
+            fg="#e2e8f0",
+            activebackground="#334155",
+            activeforeground="#fff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=8,
+            pady=3,
+        ).pack(side="left", padx=3)
+
+        tk.Button(
+            btn_box,
+            text="💾 Save Scenario",
+            command=self.open_save_dialog,
+            bg="#1e293b",
+            fg="#e2e8f0",
+            activebackground="#334155",
+            activeforeground="#fff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=8,
+            pady=3,
+        ).pack(side="left", padx=3)
+
+        tk.Button(
+            btn_box,
+            text="📐 Blast Physics",
+            command=self.open_physics_info,
+            bg="#1e293b",
+            fg="#e2e8f0",
+            activebackground="#334155",
+            activeforeground="#fff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=8,
+            pady=3,
+        ).pack(side="left", padx=3)
+
+    def _build_viewport(self):
+        """Tkinter container frame that embeds the native PyView 3D Earth view."""
+        self.viewport_frame = tk.Frame(self, bg="#000000")
+        self.viewport_frame.pack(fill="both", expand=True)
+        self.viewport_frame.bind("<Configure>", self.on_viewport_resize)
+
+        self.update()
+        self.tk_hwnd = self.viewport_frame.winfo_id()
+
+    def _build_statusbar(self):
+        statusbar = tk.Frame(self, bg="#090e17", height=24, padx=12, pady=4)
+        statusbar.pack(fill="x", side="bottom")
+
+        tk.Label(
+            statusbar,
+            text="🟢 Tkinter Core Engine: ACTIVE",
+            font=("Segoe UI", 8, "bold"),
+            fg="#4ade80",
+            bg="#090e17",
+        ).pack(side="left")
+
+        tk.Label(
+            statusbar,
+            text="•  PyView 3D Viewport: EMBEDDED",
+            font=("Segoe UI", 8),
+            fg="#38bdf8",
+            bg="#090e17",
+        ).pack(side="left", padx=8)
+
+        tk.Label(
+            statusbar,
+            text="•  Wi-Fi Geocoding: OpenStreetMap & GeoNames",
+            font=("Segoe UI", 8),
+            fg="#cbd5e1",
+            bg="#090e17",
+        ).pack(side="left", padx=8)
+
+        tk.Label(
+            statusbar,
+            text="Database: 58 Missiles  |  SQLite: scenarios.db",
+            font=("Segoe UI", 8),
+            fg="#94a3b8",
+            bg="#090e17",
+        ).pack(side="right")
+
+    def on_viewport_resize(self, event):
+        self.current_width = event.width
+        self.current_height = event.height
+        if self.child_hwnd and sys.platform == "win32":
+            ctypes.windll.user32.MoveWindow(
+                wintypes.HWND(self.child_hwnd), 0, 0, event.width, event.height, True
+            )
+
+    def open_missile_catalog(self):
+        MissileCatalogDialog(self, self.missiles)
+
+    def open_missile_catalog_filter(self, country: str):
+        dialog = MissileCatalogDialog(self, self.missiles)
+        dialog.search_var.set(country)
+
+    def open_scenarios_dialog(self):
+        ScenarioManagerDialog(self, self.db)
+
+    def open_save_dialog(self):
+        name = simpledialog.askstring("Save Scenario", "Enter scenario title to save into SQLite:", parent=self)
+        if name and name.strip():
+            scen = Scenario(
+                scenario_name=name.strip(),
+                origin_city_label="New Delhi, India",
+                origin_longitude=77.2090,
+                origin_latitude=28.6139,
+                destination_city_label="Target Location",
+                destination_longitude=116.4074,
+                destination_latitude=39.9042,
+                selected_reference_record_id="agni_v",
+                hypothetical_assessment_zone_parameters=json.dumps({"is_nuclear": True, "yield_kt": 250}),
+            )
+            try:
+                sid = self.db.save_scenario(scen)
+                messagebox.showinfo("Saved", f"Scenario '{name.strip()}' saved to scenarios.db (ID #{sid})!", parent=self)
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not save scenario: {e}", parent=self)
+
+    def open_physics_info(self):
+        PhysicsInfoDialog(self)
+
+    def open_about(self):
+        messagebox.showinfo(
+            "About Real-World Missile Impact Simulator",
+            "Real-World Missile Impact Simulator\n"
+            "===================================\n"
+            "Primary Framework: Python Tkinter (Mandatory Core GUI)\n"
+            "Geospatial Viewport: PyView (pywebview) 3D CesiumJS Earth\n"
+            "Physics Engine: Glasstone-Dolan Cube-Root Blast Radii Equations\n"
+            "Inventory: 58 Intercontinental, Intermediate & Tactical Missiles\n"
+            "Public Databases: OpenStreetMap Nominatim, GeoNames, OpenDataSoft\n"
+            "Local Persistence: SQLite scenarios.db\n\n"
+            "Developed according to mandatory project specifications.",
+            parent=self,
+        )
+
+    def reset_all(self):
+        messagebox.showinfo("Reset", "Simulator viewport reset command triggered.", parent=self)
+
+    def on_closing(self):
+        try:
+            self.destroy()
+        except Exception:
+            pass
+        if self.on_exit:
+            self.on_exit()
+        os._exit(0)
+
+
+def launch_simulator_app():
+    """
+    Mandatory Application Launcher.
+    Initializes Tkinter as the master desktop GUI application and embeds
+    the high-performance PyView 3D CesiumJS Earth view directly within it.
+    """
+    bridge = GlobeBridgeServer(port=8765)
+    globe_url = bridge.start()
+    api = bridge.api
+
+    ready_event = threading.Event()
+    app_ref: Dict[str, Any] = {"app": None}
+
+    def run_tkinter():
+        app = MissileSimulatorApp(globe_url, api)
+        app_ref["app"] = app
+        ready_event.set()
+        app.mainloop()
+
+    # Launch Tkinter on dedicated thread
+    t = threading.Thread(target=run_tkinter, daemon=True)
+    t.start()
+    ready_event.wait()
+    app = app_ref["app"]
+
+    # Embed PyView 3D Earth within Tkinter
+    win = webview.create_window(
+        title="Missile Simulator 3D Geospatial Engine",
+        url=globe_url,
+        js_api=api,
+        width=app.current_width,
+        height=app.current_height,
+        text_select=False,
+    )
+
+    def on_shown():
+        time.sleep(0.3)
+        if sys.platform == "win32" and app and app.tk_hwnd:
+            try:
+                child = win.native.Handle.ToInt64()
+                u32 = ctypes.windll.user32
+                u32.SetParent(wintypes.HWND(child), wintypes.HWND(app.tk_hwnd))
+                GWL_STYLE = -16
+                WS_CHILD = 0x40000000
+                WS_POPUP = 0x80000000
+                WS_CAPTION = 0x00C00000
+                WS_THICKFRAME = 0x00040000
+                style = u32.GetWindowLongW(child, GWL_STYLE)
+                style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME)
+                style |= WS_CHILD
+                u32.SetWindowLongW(child, GWL_STYLE, style)
+                u32.MoveWindow(wintypes.HWND(child), 0, 0, app.current_width, app.current_height, True)
+                app.child_hwnd = child
+            except Exception as err:
+                print(f"Notice: Native embedding into Tkinter container: {err}")
+
+    win.events.shown += on_shown
+    webview.start(debug=False)

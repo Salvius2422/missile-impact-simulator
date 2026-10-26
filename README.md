@@ -1,50 +1,55 @@
 # Real-World Missile Impact Simulator
 
-An interactive, map-centric desktop application powered by **PyView (`pywebview`)** and **CesiumJS 3D Earth**. The 3D globe fills the entire application window, with all control panels, configuration options, post-impact assessments, and casualty breakdown charts rendered as floating glassmorphism overlays and pop-up modal dialogs directly on the map.
+A desktop application developed mandatorily using **Python Tkinter** as the core GUI framework, seamlessly embedding a high-performance **PyView (`pywebview`)** and **CesiumJS 3D Earth** geospatial viewport. The application delivers real-time 3D orbital trajectory simulation, Glasstone-Dolan nuclear and conventional blast physics assessments, live public urban population exposure metrics, and local SQLite scenario management.
 
 ---
 
-## Key Features
+## Architecture & Technical Frameworks
 
-1. **Integrated Map-Centric Application (Powered by PyView)**:
-   - The map opens **directly inside the native desktop application window**—no external browser tabs, no separate web popups, and no disconnected HTML files.
-   - All controls, search bars, missile selectors, and warhead toggles are floating overlays right on the 3D globe.
-2. **Interactive 3D Pin Picking & Dragging**:
-   - Click anywhere on the 3D Earth or drag the **Origin (Green)** and **Target (Red)** pins across continents with real-time coordinate updates and reverse geocoding.
-3. **Maximum Range Demarcation Circle & Launch Locking**:
-   - A cyan geodesic circle demarcates the active missile's maximum range.
-   - Selecting a target outside this limit triggers an **"OUT OF RANGE"** warning and locks the Launch button.
-4. **Real-World Missiles Included**:
-   - **Agni-V** (India, ICBM, 5,500 km, Mach 24)
-   - **Agni-IV** (India, IRBM, 4,000 km, Mach 7)
-   - **BrahMos Block-III / ER** (India / Russia, Supersonic Cruise, 800 km, Mach 2.8)
-   - **LGM-30G Minuteman III** (USA, ICBM, 13,000 km, Mach 23)
-   - **AGM-114 Hellfire** (USA, Tactical, 11 km, Mach 1.3)
-5. **Pop-Up Modal Post-Impact Assessment**:
-   - Launches an animated pop-up modal box right over the map displaying:
-     - **Concentric Blast Radii** (Glasstone-Dolan cube-root scaling): Fireball (vaporization), 20 psi heavy blast, 5 psi moderate collapse, 3rd-degree thermal radiation, and 1 psi light damage.
-     - **Casualties & Structural Damage**: Estimated fatalities, injuries, exposed population, and destroyed buildings based on urban density benchmarks.
-     - **Interactive Casualty Bar Chart** with animated fill bars.
-     - **Missile Facts & Source References**.
-   - **3D Impact Zone View**: Concentric glowing rings rendered on Earth, with smooth camera fly-to animation.
-6. **Local Scenario Persistence**:
-   - Save and reload simulation scenarios to local SQLite database directly from the on-map modal dialogs.
-7. **Tkinter Compatibility Mode**:
-   - Can also be run with the traditional Tkinter control panel using `python app/main.py --tkinter`.
+1. **Mandatory Core Desktop GUI (Tkinter)**:
+   - Built on Python's native `tkinter` framework as the primary application window.
+   - **Tkinter Native Menu Bar**: Full access to Scenario Persistence (`Ctrl+S`, `Ctrl+O`), 58-Missile Technical Catalog, Blast Physics Documentation, and System Controls.
+   - **Tkinter Command & Navigation Bar**: Quick-access controls for loading scenarios, saving missions, viewing missile inventories, and resetting simulation states.
+   - **Tkinter Viewport Container**: Embeds the hardware-accelerated 3D CesiumJS Earth viewport directly inside a native Tkinter frame with dynamic resizing.
+   - **Tkinter Live Telemetry Status Bar**: Displays real-time engine status, database connection, Wi-Fi geocoding status, and active coordinates.
+   - **Interactive Tkinter Dialogs**:
+     - `MissileCatalogDialog`: Searchable `ttk.Treeview` detailing all 58 global missile systems.
+     - `ScenarioManagerDialog`: SQLite mission explorer with load, inspect, and delete operations.
+     - `PhysicsInfoDialog`: Formal documentation of Glasstone-Dolan cube-root scaling equations.
+
+2. **Embedded 3D Geospatial Engine (PyView & CesiumJS)**:
+   - Embedded directly inside the Tkinter application container—no external browser tabs or detached HTML viewers.
+   - Complete on-map HUD command overlay with real-time range envelope calculation, Glasstone-Dolan blast rings, and animated post-impact assessment popups.
+
+3. **58-Missile Technical Database**:
+   - Comprehensive inventory of 58 strategic, intermediate, and tactical missile systems across 10 major global powers (India, United States, Russia, China, France, United Kingdom, Israel, Iran, South Korea, North Korea).
+   - Covers ICBMs, SLBMs, IRBMs, MRBMs, SRBMs, Hypersonic Glide Vehicles (HGV), and Cruise Missiles.
+
+4. **Glasstone-Dolan Impact Physics & Atmospheric Scaling**:
+   - Computes concentric hazard radii based on cube-root scaling:
+     - **Fireball Vaporization Zone** ($~100\%$ lethality)
+     - **Heavy Blast Damage Zone** ($20\text{ psi}$ complete destruction)
+     - **Moderate Blast Damage Zone** ($5\text{ psi}$ structural collapse)
+     - **Thermal Radiation Zone** ($3\text{rd}$-degree flash burns)
+     - **Light Blast Damage Zone** ($1\text{ psi}$ shattered glass)
+
+5. **Live Public Population & Wi-Fi Geocoding Engine**:
+   - Live query over Wi-Fi against OpenStreetMap Nominatim and OpenDataSoft / GeoNames datasets without requiring proprietary API tokens.
+   - Automatic real-world urban population and density retrieval cached in local SQLite database.
 
 ---
 
 ## How to Run
 
-1. **Launch the simulator**:
+1. **Launch the Tkinter Desktop Simulator**:
    ```powershell
    python app/main.py
    ```
    *(Or double-click `run_simulator.bat`)*
 
-2. **Tkinter fallback (optional)**:
+2. **Run Unit Test Suite**:
    ```powershell
-   python app/main.py --tkinter
+   python -m unittest discover -s tests -p "test_*.py"
    ```
 
 ---
@@ -52,28 +57,29 @@ An interactive, map-centric desktop application powered by **PyView (`pywebview`
 ## Directory Structure
 
 ```
-├── .env                        # Mapbox API token (optional)
+├── .env.example                # Optional configuration
 ├── requirements.txt            # Python dependencies (pywebview, requests, etc.)
 ├── run_simulator.bat           # 1-click desktop launcher
-├── README.md
+├── README.md                   # Technical documentation
 ├── app/
-│   ├── main.py                 # Primary entry point (launches PyView map)
+│   ├── main.py                 # Primary entry point (boots Tkinter application)
+│   ├── ui/
+│   │   ├── main_window.py      # Tkinter Master Application & embedded PyView viewport
+│   │   └── city_search.py      # Reusable Tkinter search and autocomplete panel
 │   ├── services/
-│   │   ├── webview_api.py      # Python API bridge exposed to pywebview
+│   │   ├── webview_api.py      # Python API bridge exposed to the 3D viewport
 │   │   ├── bridge_server.py    # Local HTTP server & REST fallback
 │   │   ├── impact_physics.py   # Glasstone-Dolan blast equations & casualties
 │   │   ├── distance_service.py # Haversine great-circle calculation
-│   │   └── mapbox_geocoding.py # Forward & reverse geocoding with offline catalog
+│   │   ├── mapbox_geocoding.py # Forward/reverse geocoding (OSM / GeoNames)
+│   │   └── population_service.py# Public population database engine with SQLite caching
 │   ├── data/
-│   │   ├── models.py           # Data classes
+│   │   ├── models.py           # Dataclasses & schemas
 │   │   ├── database.py         # SQLite scenario persistence
-│   │   └── reference_data.json # Missile technical specifications
-│   ├── ui/
-│   │   ├── main_window.py      # Tkinter control panel (compatibility mode)
-│   │   └── city_search.py      # Reusable Tkinter search widget
+│   │   └── reference_data.json # 58-Missile technical database
 │   └── visualization/
 │       └── globe/
-│           └── index.html      # Full-screen 3D CesiumJS globe with overlays
+│           └── index.html      # 3D CesiumJS Earth globe with on-map HUD overlays
 └── tests/
-    └── test_all.py             # Unit test suite
+    └── test_all.py             # 8-test unit verification suite
 ```

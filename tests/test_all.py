@@ -141,6 +141,25 @@ class TestMissileSimulator(unittest.TestCase):
         self.assertIn("population_info", sim)
         self.assertGreater(sim["population_info"]["population"], 0)
 
+    def test_tkinter_components(self):
+        """Verifies that mandatory Tkinter UI components and dialogs initialize properly."""
+        import tkinter as tk
+        from app.ui.main_window import MissileCatalogDialog, PhysicsInfoDialog
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            missiles = load_missiles()
+            catalog = MissileCatalogDialog(root, missiles)
+            self.assertEqual(len(catalog.tree.get_children()), len(missiles))
+            catalog.destroy()
+
+            physics_dlg = PhysicsInfoDialog(root)
+            self.assertIsNotNone(physics_dlg)
+            physics_dlg.destroy()
+        finally:
+            root.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()
