@@ -384,7 +384,7 @@
       "country": "United States",
       "type": "Anti-Ship Cruise Missile",
       "min_range_km": 10,
-      "max_range_km": 280,
+      "max_range_km": 124,
       "speed_mach": 0.71,
       "conventional_yield_kt": 0.00022,
       "nuclear_capable": false,
@@ -446,7 +446,7 @@
       "source_url": "https://missilethreat.csis.org/missile/ss-18/",
       "facts": [
         "Legendary Soviet heavy ICBM designed to eliminate hardened NATO missile silos and command bunkers.",
-        "Can carry a massive single 20-megaton city-buster warhead or 10 heavy thermonuclear MIRVs.",
+        "Can carry a single 8.3-megaton warhead or 10 thermonuclear MIRVs of 750-800 kt each.",
         "Housed in super-hardened silos rated to withstand direct near-miss nuclear overpressures."
       ]
     },
