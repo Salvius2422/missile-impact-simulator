@@ -40,7 +40,9 @@ FIREBALL_COEFF = 0.09
 FIREBALL_EXP = 0.40
 HEAVY_BLAST_20PSI_COEFF = 0.28
 MODERATE_BLAST_5PSI_COEFF = 0.70
-THERMAL_NUCLEAR_COEFF = 1.20
+# 3rd-degree burn radius fit: ~2.0 km at 15 kt, ~11.4 km at 1 Mt (airburst, clear air),
+# in line with NUKEMAP. the previous 1.20 overstated it ~1.8x (20.8 km at 1 Mt).
+THERMAL_NUCLEAR_COEFF = 0.67
 THERMAL_NUCLEAR_EXP = 0.41
 THERMAL_CONV_COEFF = 0.35
 LIGHT_BLAST_1PSI_COEFF = 1.90
