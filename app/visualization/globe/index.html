@@ -12,57 +12,128 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #090e17;
+      background: #000000;
       user-select: none;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     .status-pill {
       position: absolute;
-      bottom: 16px;
+      bottom: 44px; /* clear of the cesium credit line */
       left: 16px;
       z-index: 50;
-      background: rgba(15, 23, 42, 0.90);
-      border: 1px solid #334155;
+      background: rgba(0, 0, 0, 0.80);
+      border: 1px solid #262626;
       border-radius: 8px;
       padding: 8px 14px;
       pointer-events: none;
-      color: #f8fafc;
+      color: #ededed;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     }
     .pill-title {
       font-size: 12px;
       font-weight: 700;
-      color: #38bdf8;
+      color: #ededed;
       margin-bottom: 2px;
     }
     .pill-sub {
       font-size: 11px;
-      color: #94a3b8;
+      color: #8a8a8a;
+    }
+
+    /* impact zone legend, shown after a launch */
+    .legend {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 50;
+      min-width: 236px;
+      padding: 12px 14px;
+      background: rgba(0, 0, 0, 0.78);
+      border: 1px solid #262626;
+      border-radius: 10px;
+      color: #ededed;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1), transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .legend.show { opacity: 1; transform: translateY(0); }
+    .legend-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #8a8a8a;
+      margin-bottom: 8px;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      line-height: 22px;
+    }
+    .legend-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex: none;
+    }
+    .legend-name { flex: 1; }
+    .legend-value {
+      color: #8a8a8a;
+      font-variant-numeric: tabular-nums;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .legend { transform: none; }
     }
   </style>
 </head>
 <body>
   <div id="cesiumContainer"></div>
   <div id="statusPill" class="status-pill">
-    <div class="pill-title" id="pillModeText">Map Click Mode: Target</div>
+    <div class="pill-title" id="pillModeText">Map Click Mode: Launch site</div>
     <div class="pill-sub">Click globe to place pin | Drag pin to move | Drag globe to rotate</div>
+  </div>
+  <div id="legend" class="legend">
+    <div class="legend-title">Impact zones</div>
+    <div id="legendRows"></div>
   </div>
 
   <script>
     Cesium.Ion.defaultAccessToken = "";
 
-    // create esri satellite base layer
+    // create esri satellite base layer.
+    // server.arcgisonline.com is a separate (faster) host from the labels layer, so the two
+    // don't compete for the browser's per-host connection limit.
+    // blankTile=false makes esri return 404 instead of a "map data not yet available" image,
+    // so cesium keeps showing the sharpest real tile it has.
     const esriBaseProvider = new Cesium.UrlTemplateImageryProvider({
-      url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?blankTile=false",
       maximumLevel: 19,
       credit: "Esri World Imagery"
     });
 
-    // create esri boundaries, places, and country borders overlay
+    // create esri boundaries, places, and country borders overlay.
+    // this layer has no tiles past level 17; cesium stretches level 17 when zoomed further.
     const esriBoundariesProvider = new Cesium.UrlTemplateImageryProvider({
       url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+      maximumLevel: 17,
       credit: "Esri Boundaries and Places"
     });
+
+    // cesium never retries a failed tile by default, so one slow response leaves a
+    // permanent blurry hole. retry timeouts/network errors a few times; skip real 404s.
+    function retryFailedTiles(provider) {
+      provider.errorEvent.addEventListener((err) => {
+        const status = err.error && err.error.statusCode;
+        if (status === 404) return;
+        if (err.timesRetried < 3) err.retry = true;
+      });
+    }
+    retryFailedTiles(esriBaseProvider);
+    retryFailedTiles(esriBoundariesProvider);
 
     let viewer;
     try {
@@ -102,11 +173,16 @@
     viewer.scene.globe.showGroundAtmosphere = false;
     viewer.scene.globe.enableLighting = false;
 
+    // smoother panning: keep more tiles in memory (default 100) so returning to an area
+    // doesn't re-download it, and load neighbouring tiles before they scroll into view
+    viewer.scene.globe.tileCacheSize = 1000;
+    viewer.scene.globe.preloadSiblings = true;
+
     // hard zoom distance limits (100m minimum, 25,000km maximum)
     viewer.scene.screenSpaceCameraController.minimumZoomDistance = 100.0;
     viewer.scene.screenSpaceCameraController.maximumZoomDistance = 25000000.0;
 
-    let currentPickMode = "destination";
+    let currentPickMode = "origin";
     let lastVersion = -1;
     let lastFlyId = -1;
 
@@ -229,6 +305,113 @@
       return points;
     }
 
+    const PIN_LABEL_STYLE = {
+      font: "600 13px 'Segoe UI', sans-serif",
+      fillColor: Cesium.Color.fromCssColorString("#ededed"),
+      showBackground: true,
+      backgroundColor: Cesium.Color.BLACK.withAlpha(0.75),
+      backgroundPadding: new Cesium.Cartesian2(10, 6),
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -16)
+    };
+
+    // blast zones, outermost first so inner zones draw on top.
+    // fill gets stronger toward the centre so severity reads at a glance.
+    const ZONES = [
+      { id: "ring_light",    key: "light_blast_1psi_km",    name: "Light blast (1 psi)",    color: "#fde047", alpha: 0.06 },
+      { id: "ring_thermal",  key: "thermal_3rd_deg_km",     name: "3rd-degree burns",       color: "#f59e0b", alpha: 0.10 },
+      { id: "ring_moderate", key: "moderate_blast_5psi_km", name: "Moderate blast (5 psi)", color: "#fb923c", alpha: 0.20 },
+      { id: "ring_heavy",    key: "heavy_blast_20psi_km",   name: "Heavy blast (20 psi)",   color: "#ef4444", alpha: 0.32 },
+      { id: "ring_fireball", key: "fireball_km",            name: "Fireball",               color: "#fff7d6", alpha: 0.60 },
+    ];
+    const GROW_MS = 700;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let lastImpactKey = null;
+
+    function formatKm(km) {
+      if (!(km > 0)) return "—";
+      if (km < 1) return Math.round(km * 1000) + " m";
+      return (km < 10 ? km.toFixed(1) : Math.round(km).toLocaleString()) + " km";
+    }
+
+    function zoneRadiusMeters(zone, radii) {
+      const km = Number(radii[zone.key]) || 0;
+      return zone.key === "fireball_km" ? Math.max(km * 1000, 50) : km * 1000;
+    }
+
+    function clearImpact() {
+      ZONES.forEach((z) => {
+        viewer.entities.removeById(z.id);
+        viewer.entities.removeById(z.id + "_edge");
+      });
+      document.getElementById("legend").classList.remove("show");
+      lastImpactKey = null;
+    }
+
+    function renderImpact(state) {
+      const radii = state.impact.radii_km;
+      const lon = state.destination.longitude;
+      const lat = state.destination.latitude;
+      const key = JSON.stringify([lon, lat, radii]);
+      if (key === lastImpactKey) return;  // same impact as before, keep current rings
+      clearImpact();
+      lastImpactKey = key;
+
+      const center = Cesium.Cartesian3.fromDegrees(lon, lat, 0);
+      const start = performance.now();
+      // ease-out cubic: rings burst out fast then settle, like a shockwave
+      const progress = () => {
+        if (reduceMotion) return 1;
+        const t = Math.min((performance.now() - start) / GROW_MS, 1);
+        return 1 - Math.pow(1 - t, 3);
+      };
+
+      ZONES.forEach((z) => {
+        const radius = zoneRadiusMeters(z, radii);
+        if (!(radius > 0)) return;
+        const axis = new Cesium.CallbackProperty(() => Math.max(radius * progress(), 1), false);
+        viewer.entities.add({
+          id: z.id,
+          position: center,
+          ellipse: {
+            semiMajorAxis: axis,
+            semiMinorAxis: axis,
+            material: Cesium.Color.fromCssColorString(z.color).withAlpha(z.alpha),
+            outline: false
+          }
+        });
+      });
+
+      // crisp edges are added once growth finishes (ground polylines are too costly to rebuild every frame)
+      setTimeout(() => {
+        if (lastImpactKey !== key) return;
+        ZONES.forEach((z) => {
+          const radius = zoneRadiusMeters(z, radii);
+          if (!(radius > 0)) return;
+          viewer.entities.add({
+            id: z.id + "_edge",
+            polyline: {
+              positions: computeCirclePoints(lon, lat, radius / 1000, 128),
+              width: 2,
+              material: Cesium.Color.fromCssColorString(z.color).withAlpha(0.9),
+              clampToGround: true
+            }
+          });
+        });
+      }, reduceMotion ? 0 : GROW_MS);
+
+      // legend lists zones from the centre outward
+      const rows = ZONES.slice().reverse().map((z) =>
+        '<div class="legend-row">' +
+          '<span class="legend-swatch" style="background:' + z.color + '"></span>' +
+          '<span class="legend-name">' + z.name + '</span>' +
+          '<span class="legend-value">' + formatKm(Number(radii[z.key])) + '</span>' +
+        '</div>'
+      ).join("");
+      document.getElementById("legendRows").innerHTML = rows;
+      document.getElementById("legend").classList.add("show");
+    }
+
     function renderState(state) {
       // 1. origin pin
       if (state.origin && typeof state.origin.longitude === "number") {
@@ -245,18 +428,13 @@
               outlineWidth: 2
             },
             label: {
-              text: "ORIGIN: " + (state.origin.label || "Launch Site"),
-              font: "12px sans-serif",
-              fillColor: Cesium.Color.WHITE,
-              showBackground: true,
-              backgroundColor: Cesium.Color.fromCssColorString("#0f172a"),
-              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-              pixelOffset: new Cesium.Cartesian2(0, -12)
+              text: "Launch  ·  " + (state.origin.label || "Launch Site"),
+              ...PIN_LABEL_STYLE
             }
           });
         } else {
           origEntity.position = pos;
-          origEntity.label.text = "ORIGIN: " + (state.origin.label || "Launch Site");
+          origEntity.label.text = "Launch  ·  " + (state.origin.label || "Launch Site");
         }
       } else {
         viewer.entities.removeById("origin_pin");
@@ -277,18 +455,13 @@
               outlineWidth: 2
             },
             label: {
-              text: "TARGET: " + (state.destination.label || "Detonation Target"),
-              font: "12px sans-serif",
-              fillColor: Cesium.Color.WHITE,
-              showBackground: true,
-              backgroundColor: Cesium.Color.fromCssColorString("#0f172a"),
-              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-              pixelOffset: new Cesium.Cartesian2(0, -12)
+              text: "Target  ·  " + (state.destination.label || "Detonation Target"),
+              ...PIN_LABEL_STYLE
             }
           });
         } else {
           destEntity.position = pos;
-          destEntity.label.text = "TARGET: " + (state.destination.label || "Detonation Target");
+          destEntity.label.text = "Target  ·  " + (state.destination.label || "Detonation Target");
         }
       } else {
         viewer.entities.removeById("dest_pin");
@@ -308,10 +481,8 @@
             ellipse: {
               semiMajorAxis: radiusMeters,
               semiMinorAxis: radiusMeters,
-              material: Cesium.Color.fromCssColorString("#38bdf8").withAlpha(0.14),
-              outline: true,
-              outlineColor: Cesium.Color.CYAN,
-              outlineWidth: 2,
+              material: Cesium.Color.WHITE.withAlpha(0.05),
+              outline: false,
               height: 0
             }
           });
@@ -330,8 +501,8 @@
               positions: circlePoints,
               width: 3,
               material: new Cesium.PolylineGlowMaterialProperty({
-                glowPower: 0.25,
-                color: Cesium.Color.fromCssColorString("#38bdf8")
+                glowPower: 0.2,
+                color: Cesium.Color.WHITE.withAlpha(0.55)
               }),
               clampToGround: true
             }
@@ -358,8 +529,8 @@
               positions: arcPositions,
               width: 3,
               material: new Cesium.PolylineGlowMaterialProperty({
-                glowPower: 0.25,
-                color: Cesium.Color.fromCssColorString("#38bdf8")
+                glowPower: 0.2,
+                color: Cesium.Color.WHITE.withAlpha(0.9)
               })
             }
           });
@@ -370,43 +541,11 @@
         viewer.entities.removeById("trajectory_line");
       }
 
-      // 5. blast rings if launched
-      const blastRingIds = ["ring_light", "ring_thermal", "ring_moderate", "ring_heavy", "ring_fireball"];
+      // 5. blast rings and legend if launched
       if (state.launched && state.impact && state.impact.radii_km && state.destination) {
-        const r = state.impact.radii_km;
-        const center = Cesium.Cartesian3.fromDegrees(state.destination.longitude, state.destination.latitude, 0);
-
-        const ringDefs = [
-          { id: "ring_light", radius: r.light_blast_1psi_km * 1000, color: "#facc15", alpha: 0.15, outline: "#eab308" },
-          { id: "ring_thermal", radius: r.thermal_3rd_deg_km * 1000, color: "#f59e0b", alpha: 0.20, outline: "#f59e0b" },
-          { id: "ring_moderate", radius: r.moderate_blast_5psi_km * 1000, color: "#f97316", alpha: 0.30, outline: "#ea580c" },
-          { id: "ring_heavy", radius: r.heavy_blast_20psi_km * 1000, color: "#dc2626", alpha: 0.40, outline: "#b91c1c" },
-          { id: "ring_fireball", radius: Math.max(r.fireball_km * 1000, 50), color: "#fef08a", alpha: 0.65, outline: "#fde047" },
-        ];
-
-        ringDefs.forEach((def) => {
-          let ringEntity = viewer.entities.getById(def.id);
-          if (!ringEntity) {
-            viewer.entities.add({
-              id: def.id,
-              position: center,
-              ellipse: {
-                semiMajorAxis: def.radius,
-                semiMinorAxis: def.radius,
-                material: Cesium.Color.fromCssColorString(def.color).withAlpha(def.alpha),
-                outline: true,
-                outlineColor: Cesium.Color.fromCssColorString(def.outline),
-                outlineWidth: 2
-              }
-            });
-          } else {
-            ringEntity.position = center;
-            ringEntity.ellipse.semiMajorAxis = def.radius;
-            ringEntity.ellipse.semiMinorAxis = def.radius;
-          }
-        });
+        renderImpact(state);
       } else {
-        blastRingIds.forEach((id) => viewer.entities.removeById(id));
+        clearImpact();
       }
     }
 
@@ -419,7 +558,7 @@
 
         if (state.pick_mode && state.pick_mode !== currentPickMode) {
           currentPickMode = state.pick_mode;
-          const modeLabel = currentPickMode === "origin" ? "Origin" : "Target";
+          const modeLabel = currentPickMode === "origin" ? "Launch site" : "Target";
           const pill = document.getElementById("pillModeText");
           if (pill) pill.innerText = "Map Click Mode: " + modeLabel;
         }
@@ -427,10 +566,14 @@
         if (state.fly_to && state.fly_to.fly_id !== lastFlyId) {
           lastFlyId = state.fly_to.fly_id;
           const height = Math.max(state.fly_to.height || 350000.0, 100.0);
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(state.fly_to.lon, state.fly_to.lat, height),
-            duration: 1.5
-          });
+          const destination = Cesium.Cartesian3.fromDegrees(state.fly_to.lon, state.fly_to.lat, height);
+          if (reduceMotion) {
+            viewer.camera.setView({ destination });
+          } else {
+            // no fixed duration: cesium scales it with distance (short hops quick, long
+            // flights up to 3 s). ease-in-out because the camera moves across the screen.
+            viewer.camera.flyTo({ destination, easingFunction: Cesium.EasingFunction.QUARTIC_IN_OUT });
+          }
         }
 
         if (state.version !== lastVersion) {

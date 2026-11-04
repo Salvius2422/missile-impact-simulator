@@ -3,13 +3,101 @@ import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Dict, Any, Optional
-from app.services.webview_api import SimulatorApi
+import requests
+from app.services.geocoding import GeocodingService, GeocodingError, PopulationService
+from app.services.impact_physics import (
+    calculate_great_circle_distance_km,
+    load_missiles,
+    check_within_range,
+    compute_impact_effects,
+)
 
+
+# ---- simulator api (called directly by the tkinter window) ----
+class SimulatorApi:
+    """lookups and the launch simulation, run on the tkinter window's worker threads"""
+
+    def __init__(self):
+        self.geocoding_service = GeocodingService()
+        self.population_service = PopulationService()
+        self.missiles = load_missiles()
+        self.missile_map = {m["id"]: m for m in self.missiles}
+
+    def reverse_geocode(self, longitude: float, latitude: float) -> Dict[str, Any]:
+        try:
+            c = self.geocoding_service.reverse_geocode(longitude, latitude)
+            return {
+                "label": c.label,
+                "longitude": c.longitude,
+                "latitude": c.latitude,
+                "provider_place_id": c.provider_place_id,
+                "attribution": c.attribution,
+            }
+        except (GeocodingError, requests.RequestException, OSError) as err:
+            print(f"reverse geocode fallback used: {err}")
+            return {
+                "label": f"Coordinates ({latitude:.3f}, {longitude:.3f})",
+                "longitude": longitude,
+                "latitude": latitude,
+                "provider_place_id": "manual-pin",
+                "attribution": "Manual Pin",
+            }
+
+    def get_population(self, longitude: float, latitude: float, label: str = "") -> Dict[str, Any]:
+        return self.population_service.get_population_and_density(longitude, latitude, label)
+
+    def simulate_launch(
+        self,
+        origin: Dict[str, Any],
+        dest: Dict[str, Any],
+        missile_id: str,
+        is_nuclear: bool,
+        nuclear_yield_kt: float,
+        pop_density_per_km2: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        missile = self.missile_map.get(missile_id, self.missiles[0])
+        dist_km = calculate_great_circle_distance_km(
+            origin["longitude"], origin["latitude"], dest["longitude"], dest["latitude"]
+        )
+        range_check = check_within_range(dist_km, missile)
+
+        if not range_check["in_range"]:
+            return {
+                "success": False,
+                "in_range": False,
+                "error": range_check["reason"],
+                "distance_km": dist_km,
+            }
+
+        # resolve target population and density
+        pop_info = self.population_service.get_population_and_density(
+            dest["longitude"], dest["latitude"], dest.get("label", "")
+        )
+        density = float(pop_info["density_per_km2"]) if pop_density_per_km2 is None else float(pop_density_per_km2)
+
+        impact = compute_impact_effects(
+            missile=missile,
+            distance_km=dist_km,
+            is_nuclear=is_nuclear,
+            nuclear_yield_kt=float(nuclear_yield_kt),
+            pop_density_per_km2=density,
+        )
+
+        return {
+            "success": True,
+            "in_range": True,
+            "distance_km": dist_km,
+            "missile": missile,
+            "impact": impact,
+            "population_info": pop_info,
+        }
+
+# ---- local http server ----
 GLOBE_DIR = Path(__file__).resolve().parent.parent / "visualization" / "globe"
 
 
 class GlobeBridgeServer:
-    """local http server serving globe static files and api endpoints"""
+    """local http server: serves the globe page, GET /api/state and POST /api/pick"""
 
     def __init__(self, on_globe_pick: Optional[Callable[[str, float, float], None]] = None, port: int = 0):
         self.port = port
@@ -25,7 +113,7 @@ class GlobeBridgeServer:
             "range_message": "",
             "launched": False,
             "impact": None,
-            "pick_mode": "destination",
+            "pick_mode": "origin",
             "fly_to": None,
         }
         self._server: Optional[ThreadingHTTPServer] = None
@@ -67,89 +155,6 @@ class GlobeBridgeServer:
                     data = json.loads(raw)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     data = {}
-
-                if self.path.startswith("/api/get_missiles"):
-                    res = bridge.api.get_missiles()
-                    self._send_json(res)
-                    return
-
-                if self.path.startswith("/api/search_city"):
-                    q = data[0] if isinstance(data, list) and data else str(data.get("query", ""))
-                    res = bridge.api.search_city(q)
-                    self._send_json(res)
-                    return
-
-                if self.path.startswith("/api/reverse_geocode"):
-                    if isinstance(data, list) and len(data) >= 2:
-                        lon, lat = float(data[0]), float(data[1])
-                    else:
-                        lon = float(data.get("longitude", 0.0))
-                        lat = float(data.get("latitude", 0.0))
-                    res = bridge.api.reverse_geocode(lon, lat)
-                    self._send_json(res)
-                    return
-
-                if self.path.startswith("/api/get_population"):
-                    if isinstance(data, list) and len(data) >= 2:
-                        lon, lat = float(data[0]), float(data[1])
-                        lbl = str(data[2]) if len(data) > 2 else ""
-                    else:
-                        lon = float(data.get("longitude", 0.0))
-                        lat = float(data.get("latitude", 0.0))
-                        lbl = str(data.get("label", ""))
-                    res = bridge.api.get_population(lon, lat, lbl)
-                    self._send_json(res)
-                    return
-
-                if self.path.startswith("/api/simulate_launch"):
-                    if isinstance(data, list) and len(data) >= 5:
-                        orig = data[0]
-                        dest = data[1]
-                        m_id = data[2]
-                        nuke = data[3]
-                        y_kt = data[4]
-                        dens = data[5] if len(data) > 5 else None
-                    else:
-                        orig = data.get("origin", {})
-                        dest = data.get("destination", {})
-                        m_id = str(data.get("missile_id", "agni_v"))
-                        nuke = bool(data.get("is_nuclear", True))
-                        y_kt = float(data.get("yield_kt", 250))
-                        dens = data.get("density")
-                    res = bridge.api.simulate_launch(orig, dest, m_id, nuke, y_kt, dens)
-                    self._send_json(res)
-                    return
-
-                if self.path.startswith("/api/save_scenario"):
-                    if isinstance(data, list) and len(data) >= 11:
-                        res = bridge.api.save_scenario(*data)
-                    else:
-                        res = bridge.api.save_scenario(
-                            data.get("name", "Scenario"),
-                            data.get("origin_label", ""),
-                            data.get("origin_lon", 0.0),
-                            data.get("origin_lat", 0.0),
-                            data.get("dest_label", ""),
-                            data.get("dest_lon", 0.0),
-                            data.get("dest_lat", 0.0),
-                            data.get("missile_id", "agni_v"),
-                            data.get("is_nuclear", True),
-                            data.get("yield_kt", 250),
-                            data.get("density", 5000),
-                        )
-                    self._send_json(res)
-                    return
-
-                if self.path.startswith("/api/list_scenarios"):
-                    res = bridge.api.list_scenarios()
-                    self._send_json(res)
-                    return
-
-                if self.path.startswith("/api/pick_mode"):
-                    mode = str(data.get("mode", "destination"))
-                    bridge.update_state(pick_mode=mode)
-                    self._send_json({"status": "ok", "pick_mode": mode})
-                    return
 
                 if self.path.startswith("/api/pick"):
                     role = str(data.get("role", "destination"))

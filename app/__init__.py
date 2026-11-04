@@ -1,1 +1,0 @@
-"""Missile impact simulator package."""

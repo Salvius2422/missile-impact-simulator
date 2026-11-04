@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import json
 import ctypes
@@ -10,14 +11,15 @@ from typing import Optional, Dict, Any, List
 
 import webview
 
-from app.data.models import PlaceCandidate, Scenario
+from app.data.database import PlaceCandidate, Scenario
 from app.data.database import ScenarioDatabase
-from app.services.mapbox_geocoding import MapboxGeocodingService
-from app.services.distance_service import calculate_great_circle_distance_km
+from app.services.geocoding import GeocodingService
+from app.services.impact_physics import calculate_great_circle_distance_km
 from app.services.impact_physics import (
     load_missiles,
     check_within_range,
     get_speed_stats,
+    compute_impact_effects,
     FIREBALL_COEFF,
     FIREBALL_EXP,
     HEAVY_BLAST_20PSI_COEFF,
@@ -40,17 +42,19 @@ from app.services.impact_physics import (
     CRUISE_AVG_RATIO,
 )
 from app.services.bridge_server import GlobeBridgeServer
-from app.services.webview_api import SimulatorApi
+from app.services.bridge_server import SimulatorApi
 from app.ui.city_search import CitySearchPanel
 
-# dark-slate color palette
-COLOR_MAIN_BG = "#0f172a"
-COLOR_PANEL_BG = "#1e293b"
-COLOR_INPUT_BG = "#090e17"
-COLOR_BORDER = "#334155"
-COLOR_TEXT = "#f8fafc"
-COLOR_MUTED = "#94a3b8"
-COLOR_ACCENT = "#38bdf8"
+# simple black palette: neutral greys only, color reserved for meaning (red/green/amber)
+COLOR_MAIN_BG = "#000000"
+COLOR_PANEL_BG = "#0a0a0a"
+COLOR_INPUT_BG = "#141414"
+COLOR_BORDER = "#262626"
+COLOR_HOVER = "#333333"
+COLOR_TEXT = "#ededed"
+COLOR_MUTED = "#8a8a8a"
+COLOR_DISABLED_FG = "#555555"
+COLOR_ACCENT = "#ededed"
 COLOR_GREEN = "#22c55e"
 COLOR_RED = "#dc2626"
 COLOR_AMBER = "#f59e0b"
@@ -61,6 +65,147 @@ FONT_BOLD = ("Segoe UI", 9, "bold")
 FONT_NORMAL = ("Segoe UI", 9)
 FONT_SMALL = ("Segoe UI", 8)
 FONT_MONO = ("Consolas", 9)
+FONT_BUTTON = ("Segoe UI Semibold", 9)
+FONT_BUTTON_LARGE = ("Segoe UI Semibold", 10)
+
+# button roles: rest / hover / pressed colours. one role per kind of action, so the
+# red launch button is the only loud thing in the panel.
+BUTTON_STYLES = {
+    # the one main action
+    "primary": {"bg": "#dc2626", "hover": "#ef4444", "press": "#b91c1c", "fg": "#ffffff"},
+    # everyday actions
+    "secondary": {"bg": "#262626", "hover": "#333333", "press": "#404040", "fg": COLOR_TEXT},
+    # toolbar: text until hovered
+    "ghost": {"bg": "#000000", "hover": "#1a1a1a", "press": "#262626", "fg": COLOR_TEXT},
+    # active map-click mode (darker shades so white text stays readable)
+    "selected-origin": {"bg": "#15803d", "hover": "#16a34a", "press": "#166534", "fg": "#ffffff"},
+    "selected-target": {"bg": "#b91c1c", "hover": "#dc2626", "press": "#991b1b", "fg": "#ffffff"},
+}
+BUTTON_DISABLED = {"bg": "#141414", "fg": "#555555"}
+
+# display scale (1.0 at 100%, 1.5 at 150%). set by enable_dpi_awareness() before tk starts.
+UI_SCALE = 1.0
+
+
+def px(n: float) -> int:
+    """scale a layout size in logical pixels to physical pixels"""
+    return int(round(n * UI_SCALE))
+
+
+def enable_dpi_awareness() -> None:
+    """make tkinter dpi-aware so it uses the same physical pixels as the embedded webview.
+
+    pywebview switches the process to dpi-aware inside webview.start(). if tkinter was
+    created before that while dpi-unaware, its sizes are in scaled pixels and the globe
+    gets positioned/sized wrong on displays above 100% scaling.
+    """
+    global UI_SCALE
+    if sys.platform != "win32":
+        return
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # system dpi aware
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            return
+    try:
+        UI_SCALE = ctypes.windll.user32.GetDpiForSystem() / 96.0
+    except (AttributeError, OSError):
+        UI_SCALE = 1.0
+
+
+# ---- missile search ----
+ROMAN_NUMERALS = {"i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
+COUNTRY_ALIASES = {
+    "United States": "usa us america",
+    "United Kingdom": "uk britain england",
+    "Russia": "russian federation",
+    "North Korea": "dprk",
+    "South Korea": "rok",
+}
+
+
+def _squash(text: str) -> str:
+    """lowercase letters and digits only, so 'Agni-V', 'agni v' and 'agniv' compare equal"""
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _arabic_numerals(text: str) -> str:
+    """'Agni-V' -> 'Agni-5', 'Minuteman III' -> 'Minuteman 3'"""
+    return re.sub(r"\b([ivx]+)\b", lambda m: ROMAN_NUMERALS.get(m.group(1), m.group(1)), text.lower())
+
+
+def missile_search_text(m: Dict[str, Any]) -> str:
+    """everything a missile can be found by, each squashed: name (also with arabic numerals), id, type, country"""
+    country = m.get("country", "")
+    parts = [m.get("name", ""), _arabic_numerals(m.get("name", "")), m.get("id", ""), m.get("type", ""), country]
+    parts += COUNTRY_ALIASES.get(country, "").split()
+    return " ".join(_squash(p) for p in parts)
+
+
+def missile_matches(m: Dict[str, Any], query: str) -> bool:
+    """'agni 5', 'agni-v', 'df41', 'india', 'usa icbm' all work.
+
+    the whole query is compared first with spaces and hyphens ignored; failing that, every
+    word of 2+ characters must appear somewhere (so 'india icbm' finds Agni-V).
+    """
+    haystack = missile_search_text(m)
+    whole, whole_arabic = _squash(query), _squash(_arabic_numerals(query))
+    if not whole or whole in haystack or whole_arabic in haystack:
+        return True
+    words = [w for w in query.split() if len(_squash(w)) >= 2]
+    return len(words) > 1 and all(
+        _squash(w) in haystack or _squash(_arabic_numerals(w)) in haystack for w in words
+    )
+
+
+class FlatButton(tk.Button):
+    """flat button with hover, pressed and disabled states for the black theme.
+
+    tk.Button has no hover state of its own, so <Enter>/<Leave> swap the colour.
+    setting state="disabled" through config() repaints it, so callers need nothing special.
+    """
+
+    def __init__(self, master: tk.Widget, kind: str = "secondary", large: bool = False, **kw: Any):
+        kw.setdefault("font", FONT_BUTTON_LARGE if large else FONT_BUTTON)
+        kw.setdefault("padx", px(14))
+        kw.setdefault("pady", px(6) if large else px(4))
+        super().__init__(master, relief="flat", bd=0, highlightthickness=0, **kw)
+        self._kind = kind
+        self._hovered = False
+        self.bind("<Enter>", lambda _e: self._set_hover(True), add="+")
+        self.bind("<Leave>", lambda _e: self._set_hover(False), add="+")
+        self._paint()
+
+    def set_kind(self, kind: str) -> None:
+        self._kind = kind
+        self._paint()
+
+    def configure(self, cnf=None, **kw: Any):
+        result = super().configure(cnf, **kw)
+        if "state" in kw or (isinstance(cnf, dict) and "state" in cnf):
+            self._paint()
+        return result
+
+    config = configure
+
+    def _set_hover(self, hovered: bool) -> None:
+        self._hovered = hovered
+        self._paint()
+
+    def _paint(self) -> None:
+        style = BUTTON_STYLES[self._kind]
+        if str(self.cget("state")) == "disabled":
+            super().configure(
+                bg=BUTTON_DISABLED["bg"], fg=BUTTON_DISABLED["fg"],
+                disabledforeground=BUTTON_DISABLED["fg"], cursor="arrow",
+            )
+        else:
+            super().configure(
+                bg=style["hover"] if self._hovered else style["bg"], fg=style["fg"],
+                activebackground=style["press"], activeforeground=style["fg"], cursor="hand2",
+            )
 
 
 class MissileCatalogDialog(tk.Toplevel):
@@ -69,7 +214,7 @@ class MissileCatalogDialog(tk.Toplevel):
     def __init__(self, parent: tk.Widget, missiles: List[Dict[str, Any]], on_select=None):
         super().__init__(parent)
         self.title("Missile Technical Catalog")
-        self.geometry("960x520")
+        self.geometry(f"{px(960)}x{px(520)}")
         self.minsize(760, 400)
         self.missiles = missiles
         self.on_select = on_select
@@ -113,13 +258,13 @@ class MissileCatalogDialog(tk.Toplevel):
         self.tree.heading("warhead", text="Warhead Type")
         self.tree.heading("yield", text="Default Yield (kt)")
 
-        self.tree.column("country", width=120)
-        self.tree.column("name", width=180)
-        self.tree.column("type", width=140)
-        self.tree.column("range", width=110, anchor="e")
-        self.tree.column("speed", width=110, anchor="center")
-        self.tree.column("warhead", width=120, anchor="center")
-        self.tree.column("yield", width=110, anchor="e")
+        self.tree.column("country", width=px(120))
+        self.tree.column("name", width=px(180))
+        self.tree.column("type", width=px(140))
+        self.tree.column("range", width=px(110), anchor="e")
+        self.tree.column("speed", width=px(110), anchor="center")
+        self.tree.column("warhead", width=px(120), anchor="center")
+        self.tree.column("yield", width=px(110), anchor="e")
 
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -183,7 +328,7 @@ class ScenarioManagerDialog(tk.Toplevel):
     def __init__(self, parent: tk.Widget, db: ScenarioDatabase, on_load=None):
         super().__init__(parent)
         self.title("Saved Scenarios")
-        self.geometry("860x440")
+        self.geometry(f"{px(860)}x{px(440)}")
         self.db = db
         self.on_load = on_load
         self.configure(bg=COLOR_MAIN_BG)
@@ -214,12 +359,12 @@ class ScenarioManagerDialog(tk.Toplevel):
         self.tree.heading("missile", text="Missile ID")
         self.tree.heading("date", text="Created At")
 
-        self.tree.column("id", width=50, anchor="center")
-        self.tree.column("name", width=180)
-        self.tree.column("origin", width=160)
-        self.tree.column("target", width=160)
-        self.tree.column("missile", width=110, anchor="center")
-        self.tree.column("date", width=140, anchor="center")
+        self.tree.column("id", width=px(50), anchor="center")
+        self.tree.column("name", width=px(180))
+        self.tree.column("origin", width=px(160))
+        self.tree.column("target", width=px(160))
+        self.tree.column("missile", width=px(110), anchor="center")
+        self.tree.column("date", width=px(140), anchor="center")
 
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -287,7 +432,7 @@ class PhysicsInfoDialog(tk.Toplevel):
     def __init__(self, parent: tk.Widget):
         super().__init__(parent)
         self.title("Glasstone-Dolan Impact Physics Scaling Laws")
-        self.geometry("760x520")
+        self.geometry(f"{px(760)}x{px(520)}")
         self.configure(bg=COLOR_MAIN_BG)
 
         header = tk.Frame(self, bg=COLOR_PANEL_BG, padx=14, pady=10)
@@ -349,8 +494,8 @@ class MissileSimulatorApp(tk.Tk):
         self.on_exit = on_exit
 
         self.title("Missile Impact Simulator")
-        self.geometry("1440x880")
-        self.minsize(1120, 720)
+        self.geometry(f"{px(1440)}x{px(880)}")
+        self.minsize(px(1120), px(720))
         self.configure(bg=COLOR_MAIN_BG)
 
         self.child_hwnd: Optional[int] = None
@@ -359,7 +504,7 @@ class MissileSimulatorApp(tk.Tk):
 
         self.db = ScenarioDatabase()
         self.missiles = load_missiles()
-        self.geocoding_service = MapboxGeocodingService()
+        self.geocoding_service = GeocodingService()
 
         # application state
         self.origin_candidate: Optional[PlaceCandidate] = None
@@ -368,7 +513,8 @@ class MissileSimulatorApp(tk.Tk):
         self.current_pop_info: Optional[Dict[str, Any]] = None
         self.current_distance_km: float = 0.0
         self.is_in_range: bool = False
-        self.active_pick_mode: str = "destination"
+        self.active_pick_mode: str = "origin"  # place the launch site first, then the target
+        self._fly_seq: int = 0
 
         self._configure_styles()
         self._build_menu()
@@ -386,15 +532,54 @@ class MissileSimulatorApp(tk.Tk):
         except Exception:
             pass
 
-        style.configure(".", background=COLOR_PANEL_BG, foreground=COLOR_TEXT)
+        # flat look: border, light and dark bevel colors all set to one subtle grey
+        flat = dict(bordercolor=COLOR_BORDER, lightcolor=COLOR_BORDER, darkcolor=COLOR_BORDER)
+        style.configure(".", background=COLOR_PANEL_BG, foreground=COLOR_TEXT, **flat)
         style.configure("TLabel", background=COLOR_PANEL_BG, foreground=COLOR_TEXT, font=FONT_NORMAL)
-        style.configure("TLabelframe", background=COLOR_PANEL_BG, foreground=COLOR_ACCENT)
-        style.configure("TLabelframe.Label", background=COLOR_PANEL_BG, foreground=COLOR_ACCENT, font=FONT_CARD_TITLE)
-        style.configure("TEntry", fieldbackground=COLOR_INPUT_BG, foreground=COLOR_TEXT)
-        style.configure("TCombobox", fieldbackground=COLOR_INPUT_BG, background=COLOR_PANEL_BG, foreground=COLOR_TEXT)
-        style.map("TCombobox", fieldbackground=[("readonly", COLOR_INPUT_BG)], selectbackground=[("readonly", COLOR_BORDER)])
-        style.configure("TButton", background=COLOR_BORDER, foreground=COLOR_TEXT, font=FONT_NORMAL)
-        style.map("TButton", background=[("active", "#475569"), ("disabled", COLOR_PANEL_BG)], foreground=[("disabled", "#64748b")])
+        style.configure("TLabelframe", background=COLOR_PANEL_BG, foreground=COLOR_TEXT, **flat)
+        style.configure("TLabelframe.Label", background=COLOR_PANEL_BG, foreground=COLOR_TEXT, font=FONT_CARD_TITLE)
+        style.configure("TEntry", fieldbackground=COLOR_INPUT_BG, foreground=COLOR_TEXT, insertcolor=COLOR_TEXT, **flat)
+        style.map("TEntry", bordercolor=[("focus", COLOR_MUTED)], lightcolor=[("focus", COLOR_MUTED)])
+        style.configure(
+            "TCombobox", fieldbackground=COLOR_INPUT_BG, background=COLOR_INPUT_BG, foreground=COLOR_TEXT,
+            arrowcolor=COLOR_MUTED, insertcolor=COLOR_TEXT, selectbackground=COLOR_HOVER, selectforeground=COLOR_TEXT, **flat,
+        )
+        style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", COLOR_INPUT_BG)],
+            background=[("active", COLOR_HOVER), ("readonly", COLOR_INPUT_BG)],
+            selectbackground=[("readonly", COLOR_INPUT_BG)],
+            selectforeground=[("readonly", COLOR_TEXT)],
+            foreground=[("readonly", COLOR_TEXT)],
+        )
+        # dropdown list of comboboxes
+        self.option_add("*TCombobox*Listbox.background", COLOR_INPUT_BG)
+        self.option_add("*TCombobox*Listbox.foreground", COLOR_TEXT)
+        self.option_add("*TCombobox*Listbox.selectBackground", COLOR_HOVER)
+        self.option_add("*TCombobox*Listbox.selectForeground", COLOR_TEXT)
+        sec = BUTTON_STYLES["secondary"]
+        style.configure(
+            "TButton", background=sec["bg"], foreground=sec["fg"], font=FONT_BUTTON,
+            padding=(px(12), px(4)), relief="flat", focuscolor=sec["bg"],
+            bordercolor=sec["bg"], lightcolor=sec["bg"], darkcolor=sec["bg"],
+        )
+        style.map(
+            "TButton",
+            background=[("disabled", BUTTON_DISABLED["bg"]), ("pressed", sec["press"]), ("active", sec["hover"])],
+            bordercolor=[("disabled", BUTTON_DISABLED["bg"]), ("pressed", sec["press"]), ("active", sec["hover"])],
+            lightcolor=[("pressed", sec["press"]), ("active", sec["hover"])],
+            darkcolor=[("pressed", sec["press"]), ("active", sec["hover"])],
+            foreground=[("disabled", BUTTON_DISABLED["fg"])],
+            relief=[("pressed", "flat")],
+        )
+        self.option_add("*TButton.cursor", "hand2")
+        style.configure(
+            "Vertical.TScrollbar", background=COLOR_BORDER, troughcolor=COLOR_MAIN_BG, arrowcolor=COLOR_MUTED,
+            gripcount=0, **flat,
+        )
+        style.map("Vertical.TScrollbar", background=[("active", COLOR_HOVER)])
+        style.map("TCheckbutton", background=[("active", COLOR_PANEL_BG)])
+        style.configure("TCheckbutton", indicatorbackground=COLOR_INPUT_BG, indicatorforeground=COLOR_TEXT)
         style.configure("Treeview", background=COLOR_INPUT_BG, foreground=COLOR_TEXT, fieldbackground=COLOR_INPUT_BG)
         style.map("Treeview", background=[("selected", COLOR_BORDER)], foreground=[("selected", COLOR_ACCENT)])
         style.configure("Treeview.Heading", background=COLOR_PANEL_BG, foreground=COLOR_ACCENT, font=FONT_BOLD)
@@ -407,7 +592,7 @@ class MissileSimulatorApp(tk.Tk):
         file_menu.add_command(label="Save Scenario...", command=self.open_save_dialog, accelerator="Ctrl+S")
         file_menu.add_command(label="Load Scenario...", command=self.open_scenarios_dialog, accelerator="Ctrl+O")
         file_menu.add_separator()
-        file_menu.add_command(label="Reset Pins", command=self.reset_all)
+        file_menu.add_command(label="Clear All", command=self.reset_all)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_closing, accelerator="Ctrl+Q")
         menubar.add_cascade(label="File", menu=file_menu)
@@ -457,22 +642,7 @@ class MissileSimulatorApp(tk.Tk):
             ("Blast Physics", self.open_physics_info),
         ]
         for label, cmd in buttons:
-            btn = tk.Button(
-                btn_box,
-                text=label,
-                command=cmd,
-                bg=COLOR_PANEL_BG,
-                fg=COLOR_TEXT,
-                activebackground=COLOR_BORDER,
-                activeforeground="#ffffff",
-                font=FONT_BOLD,
-                relief="flat",
-                padx=8,
-                pady=2,
-                highlightthickness=1,
-                highlightbackground=COLOR_BORDER,
-            )
-            btn.pack(side="left", padx=4)
+            FlatButton(btn_box, kind="ghost", text=label, command=cmd).pack(side="left", padx=(px(2), 0))
 
     def _build_layout(self) -> None:
         # main 3-column body
@@ -480,13 +650,13 @@ class MissileSimulatorApp(tk.Tk):
         body.pack(fill="both", expand=True, padx=6, pady=4)
 
         # left column: mission controls
-        self.left_col = tk.Frame(body, bg=COLOR_MAIN_BG, width=360)
+        self.left_col = tk.Frame(body, bg=COLOR_MAIN_BG, width=px(360))
         self.left_col.pack(side="left", fill="y", padx=(0, 4))
         self.left_col.pack_propagate(False)
         self._build_left_controls()
 
         # center column: 3d globe container
-        self.viewport_frame = tk.Frame(body, bg="#000000")
+        self.viewport_frame = tk.Frame(body, bg=COLOR_MAIN_BG)
         self.viewport_frame.pack(side="left", fill="both", expand=True)
         self.viewport_frame.bind("<Configure>", self.on_viewport_resize)
 
@@ -494,7 +664,7 @@ class MissileSimulatorApp(tk.Tk):
         self.tk_hwnd = self.viewport_frame.winfo_id()
 
         # right column: post-impact results panel
-        self.right_col = tk.Frame(body, bg=COLOR_MAIN_BG, width=380)
+        self.right_col = tk.Frame(body, bg=COLOR_MAIN_BG, width=px(380))
         self.right_col.pack(side="right", fill="y", padx=(4, 0))
         self.right_col.pack_propagate(False)
         self._build_right_results()
@@ -519,15 +689,10 @@ class MissileSimulatorApp(tk.Tk):
 
         orig_btn_row = tk.Frame(self.origin_panel, bg=COLOR_PANEL_BG)
         orig_btn_row.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(4, 0))
-        self.pick_orig_btn = tk.Button(
+        self.pick_orig_btn = FlatButton(
             orig_btn_row,
             text="Pick Origin on Map",
             command=lambda: self._set_pick_mode("origin"),
-            bg=COLOR_BORDER,
-            fg=COLOR_TEXT,
-            activebackground="#475569",
-            font=FONT_NORMAL,
-            relief="flat",
         )
         self.pick_orig_btn.pack(side="left", fill="x", expand=True)
 
@@ -537,15 +702,10 @@ class MissileSimulatorApp(tk.Tk):
 
         dest_btn_row = tk.Frame(self.dest_panel, bg=COLOR_PANEL_BG)
         dest_btn_row.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(4, 2))
-        self.pick_dest_btn = tk.Button(
+        self.pick_dest_btn = FlatButton(
             dest_btn_row,
             text="Pick Target on Map",
             command=lambda: self._set_pick_mode("destination"),
-            bg=COLOR_BORDER,
-            fg=COLOR_TEXT,
-            activebackground="#475569",
-            font=FONT_NORMAL,
-            relief="flat",
         )
         self.pick_dest_btn.pack(side="left", fill="x", expand=True)
 
@@ -589,21 +749,22 @@ class MissileSimulatorApp(tk.Tk):
         self.warhead_combo.grid(row=1, column=1, sticky="ew", padx=(2, 0))
         self.warhead_combo.bind("<<ComboboxSelected>>", lambda _: self._filter_missiles())
 
-        # text filter
-        search_m_row = tk.Frame(m_frame, bg=COLOR_PANEL_BG)
-        search_m_row.pack(fill="x", pady=2)
-        tk.Label(search_m_row, text="Search:", fg=COLOR_MUTED, bg=COLOR_PANEL_BG, font=FONT_SMALL).pack(side="left")
-        self.missile_search_var = tk.StringVar()
-        self.missile_search_var.trace_add("write", lambda *_: self._filter_missiles())
-        ttk.Entry(search_m_row, textvariable=self.missile_search_var).pack(side="left", fill="x", expand=True, padx=(4, 0))
-
-        # missile selector
-        tk.Label(m_frame, text="Select Missile System:", fg=COLOR_TEXT, bg=COLOR_PANEL_BG, font=FONT_BOLD).pack(
+        # missile box: type in it to search, pick from the dropdown
+        tk.Label(m_frame, text="Missile (type to search):", fg=COLOR_TEXT, bg=COLOR_PANEL_BG, font=FONT_BOLD).pack(
             anchor="w", pady=(4, 2)
         )
-        self.missile_combo = ttk.Combobox(m_frame, state="readonly")
+        self.missile_combo = ttk.Combobox(m_frame)
         self.missile_combo.pack(fill="x", pady=2)
         self.missile_combo.bind("<<ComboboxSelected>>", self._on_missile_selected)
+        self.missile_combo.bind("<KeyRelease>", self._on_missile_typed)
+        self.missile_combo.bind("<Return>", lambda _e: self._pick_top_missile_match())
+        self.missile_combo.bind("<FocusOut>", lambda _e: self.after(50, self._restore_if_left_missile_box))
+
+        # match count, so typing always shows what happened
+        self.missile_match_var = tk.StringVar(value="")
+        self.missile_match_lbl = tk.Label(m_frame, textvariable=self.missile_match_var, fg=COLOR_MUTED,
+                                          bg=COLOR_PANEL_BG, font=FONT_SMALL, anchor="w")
+        self.missile_match_lbl.pack(fill="x")
 
         # specs card
         self.spec_frame = tk.Frame(m_frame, bg=COLOR_INPUT_BG, padx=8, pady=6, highlightthickness=1, highlightbackground=COLOR_BORDER)
@@ -653,25 +814,27 @@ class MissileSimulatorApp(tk.Tk):
             fg=COLOR_MUTED,
             bg=COLOR_PANEL_BG,
             font=FONT_BOLD,
-            wraplength=320,
+            wraplength=px(320),
             justify="left",
         )
         self.range_status_lbl.pack(fill="x", pady=(2, 6))
 
-        self.launch_btn = tk.Button(
-            launch_frame,
+        btn_row = tk.Frame(launch_frame, bg=COLOR_PANEL_BG)
+        btn_row.pack(fill="x")
+
+        self.launch_btn = FlatButton(
+            btn_row,
+            kind="primary",
+            large=True,
             text="Simulate Launch",
             command=self.simulate_launch,
-            bg=COLOR_RED,
-            fg="#ffffff",
-            activebackground="#b91c1c",
-            activeforeground="#ffffff",
-            font=("Segoe UI", 10, "bold"),
-            relief="flat",
             state="disabled",
-            pady=6,
         )
-        self.launch_btn.pack(fill="x")
+        self.launch_btn.pack(side="left", fill="x", expand=True)
+
+        # secondary action: neutral so it never competes with the red launch button
+        self.clear_btn = FlatButton(btn_row, large=True, text="Clear", command=self.reset_all)
+        self.clear_btn.pack(side="left", padx=(px(6), 0))
 
     def _build_right_results(self) -> None:
         canvas = tk.Canvas(self.right_col, bg=COLOR_MAIN_BG, highlightthickness=0)
@@ -702,7 +865,7 @@ class MissileSimulatorApp(tk.Tk):
             fg=COLOR_MUTED,
             bg=COLOR_MAIN_BG,
             font=FONT_NORMAL,
-            wraplength=340,
+            wraplength=px(340),
             justify="center",
             padx=12,
             pady=40,
@@ -740,11 +903,31 @@ class MissileSimulatorApp(tk.Tk):
         self._select_missile_by_id("agni_v")
         if self.bridge and self.selected_missile:
             self.bridge.update_state(missile=self.selected_missile)
+        self._set_pick_mode("origin")
 
-    def _filter_missiles(self) -> None:
+    def _next_fly_id(self) -> int:
+        """unique id per camera move, so the globe never skips a repeated move"""
+        self._fly_seq += 1
+        return self._fly_seq
+
+    def _advance_to_target_mode(self) -> None:
+        """after the launch site is placed, map clicks place the target next"""
+        if self.origin_candidate and not self.dest_candidate and self.active_pick_mode == "origin":
+            self._set_pick_mode("destination")
+
+    @staticmethod
+    def _missile_label(m: Dict[str, Any]) -> str:
+        return f"{m['name']} ({m.get('country', '')})"
+
+    def _filter_missiles(self, query: str = "") -> None:
+        """narrow the missile list by the country and warhead filters and the typed query.
+
+        with a query (the user is typing) the list narrows but nothing is selected yet;
+        without one (a filter changed) the current missile stays if it still fits.
+        """
         c_filter = self.country_filter_var.get()
         w_filter = self.warhead_filter_var.get()
-        q = self.missile_search_var.get().lower().strip()
+        q = query.strip()
 
         matched = []
         for m in self.missiles:
@@ -754,21 +937,77 @@ class MissileSimulatorApp(tk.Tk):
                 continue
             if w_filter == "Conventional-Only" and m.get("nuclear_capable"):
                 continue
-            if q and q not in m.get("name", "").lower() and q not in m.get("type", "").lower():
+            if q and not missile_matches(m, q):
                 continue
             matched.append(m)
 
-        self.filtered_missiles = matched
-        labels = [f"{m['name']} ({m.get('country', '')})" for m in matched]
-        self.missile_combo["values"] = labels
+        if not matched:
+            # keep the current missile selected, and say why nothing is listed
+            self.missile_match_var.set(f"No missiles match “{q}”" if q else "No missiles match these filters")
+            self.missile_match_lbl.config(fg=COLOR_AMBER)
+            if q:
+                self.filtered_missiles = []
+                self.missile_combo["values"] = []
+            return
 
-        if matched:
+        self.filtered_missiles = matched
+        self.missile_combo["values"] = [self._missile_label(m) for m in matched]
+        self.missile_match_lbl.config(fg=COLOR_MUTED)
+
+        if q:
+            count = f"{len(matched)} match" if len(matched) == 1 else f"{len(matched)} matches"
+            self.missile_match_var.set(f"{count} · Enter picks the first, ↓ shows all")
+            return
+
+        filtered = c_filter != "All Countries" or w_filter != "All Types"
+        self.missile_match_var.set(f"{len(matched)} missiles match the filters" if filtered else "")
+        # keep the current missile if it still fits the filters; otherwise take the first
+        current = self.selected_missile
+        if current in matched:
+            self.missile_combo.current(matched.index(current))
+        else:
             self.missile_combo.current(0)
             self._apply_missile(matched[0])
+
+    def _on_missile_typed(self, event: tk.Event) -> None:
+        if event.keysym in ("Up", "Down", "Return", "Escape", "Tab", "Shift_L", "Shift_R", "Control_L", "Control_R"):
+            return
+        text = self.missile_combo.get()
+        if self.selected_missile and text == self._missile_label(self.selected_missile):
+            return
+        self._filter_missiles(query=text)
+
+    def _pick_top_missile_match(self) -> None:
+        """enter: take the first match of what was typed"""
+        text = self.missile_combo.get().strip()
+        if self.selected_missile and text == self._missile_label(self.selected_missile):
+            return
+        if text and self.filtered_missiles and all(missile_matches(m, text) for m in self.filtered_missiles):
+            self._choose_missile(self.filtered_missiles[0])
         else:
-            self.missile_combo.set("")
-            self.selected_missile = None
-            self._update_spec_card()
+            self._restore_missile_text()
+
+    def _choose_missile(self, m: Dict[str, Any]) -> None:
+        """select a missile and reset the list to the filters, so the next search starts fresh"""
+        self._apply_missile(m)
+        self._filter_missiles()
+        self.missile_combo.icursor("end")
+        self.missile_combo.selection_clear()
+
+    def _restore_if_left_missile_box(self) -> None:
+        """focus also leaves the box when its dropdown opens; only restore if it really left"""
+        try:
+            widget = self.focus_get()
+        except (KeyError, tk.TclError):
+            return  # focus is inside the dropdown list (an internal ttk widget)
+        if widget is self.missile_combo or (widget is not None and "popdown" in str(widget)):
+            return
+        self._restore_missile_text()
+
+    def _restore_missile_text(self) -> None:
+        """leaving the box without choosing puts the current missile back"""
+        if self.selected_missile and self.missile_combo.get() != self._missile_label(self.selected_missile):
+            self._filter_missiles()
 
     def _select_missile_by_id(self, missile_id: str) -> None:
         for idx, m in enumerate(self.missiles):
@@ -776,9 +1015,7 @@ class MissileSimulatorApp(tk.Tk):
                 self.selected_missile = m
                 self.country_filter_var.set("All Countries")
                 self.warhead_filter_var.set("All Types")
-                self.missile_search_var.set("")
                 self._filter_missiles()
-                labels = [f"{item['name']} ({item.get('country', '')})" for item in self.filtered_missiles]
                 try:
                     target_idx = [item["id"] for item in self.filtered_missiles].index(missile_id)
                     self.missile_combo.current(target_idx)
@@ -790,7 +1027,7 @@ class MissileSimulatorApp(tk.Tk):
     def _on_missile_selected(self, _event: tk.Event) -> None:
         idx = self.missile_combo.current()
         if 0 <= idx < len(self.filtered_missiles):
-            self._apply_missile(self.filtered_missiles[idx])
+            self._choose_missile(self.filtered_missiles[idx])
 
     def _apply_missile(self, m: Dict[str, Any]) -> None:
         self.selected_missile = m
@@ -855,13 +1092,13 @@ class MissileSimulatorApp(tk.Tk):
         if self.bridge:
             self.bridge.update_state(pick_mode=mode)
         if mode == "origin":
-            self.pick_orig_btn.config(bg=COLOR_GREEN, fg="#ffffff")
-            self.pick_dest_btn.config(bg=COLOR_BORDER, fg=COLOR_TEXT)
-            self.status_var.set("Click globe to place Origin launch site")
+            self.pick_orig_btn.set_kind("selected-origin")
+            self.pick_dest_btn.set_kind("secondary")
+            self.status_var.set("Click the globe to place the launch site")
         else:
-            self.pick_dest_btn.config(bg=COLOR_RED, fg="#ffffff")
-            self.pick_orig_btn.config(bg=COLOR_BORDER, fg=COLOR_TEXT)
-            self.status_var.set("Click globe to place Target detonation site")
+            self.pick_dest_btn.set_kind("selected-target")
+            self.pick_orig_btn.set_kind("secondary")
+            self.status_var.set("Click the globe to place the target")
 
     def _on_origin_selected(self, cand: Optional[PlaceCandidate]) -> None:
         self.origin_candidate = cand
@@ -871,11 +1108,14 @@ class MissileSimulatorApp(tk.Tk):
             self.bridge.update_state(
                 origin={"label": cand.label, "longitude": cand.longitude, "latitude": cand.latitude},
                 missile=self.selected_missile,
-                fly_to={"lon": cand.longitude, "lat": cand.latitude, "height": 450000.0, "fly_id": id(cand)},
+                fly_to={"lon": cand.longitude, "lat": cand.latitude, "height": 450000.0, "fly_id": self._next_fly_id()},
             )
+        self._advance_to_target_mode()
 
     def _on_dest_selected(self, cand: Optional[PlaceCandidate]) -> None:
         self.dest_candidate = cand
+        # drop the previous target's population so it isn't shown for the new target
+        self.current_pop_info = None
         if cand:
             # fetch population on daemon thread
             def _worker():
@@ -888,7 +1128,7 @@ class MissileSimulatorApp(tk.Tk):
                 self.bridge.update_state(
                     destination={"label": cand.label, "longitude": cand.longitude, "latitude": cand.latitude},
                     missile=self.selected_missile,
-                    fly_to={"lon": cand.longitude, "lat": cand.latitude, "height": 350000.0, "fly_id": id(cand)},
+                    fly_to={"lon": cand.longitude, "lat": cand.latitude, "height": 350000.0, "fly_id": self._next_fly_id()},
                 )
         else:
             self.target_pop_var.set("Population: -- | Density: --")
@@ -936,6 +1176,7 @@ class MissileSimulatorApp(tk.Tk):
         if role == "origin":
             self.origin_candidate = cand
             self.origin_panel.set_place(cand)
+            self._advance_to_target_mode()
         else:
             self.dest_candidate = cand
             self.dest_panel.set_place(cand)
@@ -946,6 +1187,10 @@ class MissileSimulatorApp(tk.Tk):
         self._update_assessment_preview()
 
     def _update_range_and_pins(self) -> None:
+        # inputs changed, so any blast rings on the globe belong to an old launch
+        if self.bridge:
+            self.bridge.update_state(launched=False, impact=None)
+
         o_data = (
             {"label": self.origin_candidate.label, "longitude": self.origin_candidate.longitude, "latitude": self.origin_candidate.latitude}
             if self.origin_candidate
@@ -1061,7 +1306,6 @@ class MissileSimulatorApp(tk.Tk):
 
         self.status_var.set("Simulation complete")
         impact = res["impact"]
-        pop_info = res["population_info"]
 
         if self.bridge:
             self.bridge.update_state(
@@ -1071,7 +1315,7 @@ class MissileSimulatorApp(tk.Tk):
                     "lon": self.dest_candidate.longitude,
                     "lat": self.dest_candidate.latitude,
                     "height": max(impact["radii_km"]["light_blast_1psi_km"] * 3500.0, 150000.0),
-                    "fly_id": id(impact),
+                    "fly_id": self._next_fly_id(),
                 },
             )
 
@@ -1084,16 +1328,13 @@ class MissileSimulatorApp(tk.Tk):
         is_nuke = bool(self.is_nuclear_var.get())
         yield_kt = float(self.yield_var.get()) if is_nuke else float(self.selected_missile.get("conventional_yield_kt", 0.001))
 
-        if self.current_pop_info:
-            pop_info = self.current_pop_info
-        else:
-            pop_info = self.api.get_population(
-                self.dest_candidate.longitude, self.dest_candidate.latitude, self.dest_candidate.label
-            )
-            self.current_pop_info = pop_info
+        # population is fetched on a background thread; _apply_population_update re-runs
+        # this preview when it arrives. fetching it here would freeze the ui on slow networks.
+        if not self.current_pop_info:
+            return
+        pop_info = self.current_pop_info
 
         density = float(pop_info.get("density_per_km2", 1500.0))
-        target_pop = pop_info.get("population")
 
         impact = compute_impact_effects(
             missile=self.selected_missile,
@@ -1101,9 +1342,6 @@ class MissileSimulatorApp(tk.Tk):
             is_nuclear=is_nuke,
             nuclear_yield_kt=yield_kt,
             pop_density_per_km2=density,
-            target_population=target_pop,
-            target_lon=self.dest_candidate.longitude,
-            target_lat=self.dest_candidate.latitude,
         )
 
         res = {
@@ -1163,7 +1401,7 @@ class MissileSimulatorApp(tk.Tk):
                 fg=COLOR_ACCENT,
                 bg=COLOR_PANEL_BG,
                 font=FONT_SMALL,
-                wraplength=340,
+                wraplength=px(340),
                 justify="left",
             )
             pat_lbl.pack(fill="x", pady=(0, 4), anchor="w")
@@ -1200,7 +1438,7 @@ class MissileSimulatorApp(tk.Tk):
             bar_canvas = tk.Canvas(parent_frame, height=8, bg=COLOR_BORDER, highlightthickness=0)
             bar_canvas.pack(fill="x", pady=(0, 2))
             ratio = min(max(count / total_exp, 0.0), 1.0)
-            bar_width = int(ratio * 320)
+            bar_width = int(ratio * px(320))
             if bar_width > 0:
                 bar_canvas.create_rectangle(0, 0, bar_width, 8, fill=color, outline="")
 
@@ -1212,14 +1450,14 @@ class MissileSimulatorApp(tk.Tk):
         c5 = ttk.LabelFrame(self.results_container, text="Missile Specifications & Facts", padding=8)
         c5.pack(fill="x", pady=4)
 
-        notes = missile.get("notes", [])
+        notes = missile.get("facts", [])
         if isinstance(notes, list):
             for note in notes[:4]:
-                tk.Label(c5, text=f"* {note}", fg=COLOR_MUTED, bg=COLOR_PANEL_BG, font=FONT_SMALL, wraplength=320, justify="left").pack(anchor="w", pady=1)
+                tk.Label(c5, text=f"* {note}", fg=COLOR_MUTED, bg=COLOR_PANEL_BG, font=FONT_SMALL, wraplength=px(320), justify="left").pack(anchor="w", pady=1)
 
         source_url = missile.get("source_url", "")
         if source_url:
-            tk.Label(c5, text=f"Source: {source_url}", fg=COLOR_ACCENT, bg=COLOR_PANEL_BG, font=FONT_SMALL, wraplength=320, justify="left").pack(anchor="w", pady=(4, 0))
+            tk.Label(c5, text=f"Source: {source_url}", fg=COLOR_ACCENT, bg=COLOR_PANEL_BG, font=FONT_SMALL, wraplength=px(320), justify="left").pack(anchor="w", pady=(4, 0))
 
     def on_viewport_resize(self, event: tk.Event) -> None:
         self.current_width = event.width
@@ -1245,6 +1483,9 @@ class MissileSimulatorApp(tk.Tk):
     def open_save_dialog(self) -> None:
         if not self.origin_candidate or not self.dest_candidate:
             messagebox.showwarning("Save Scenario", "Please select both an origin and target city first.", parent=self)
+            return
+        if not self.selected_missile:
+            messagebox.showwarning("Save Scenario", "Please select a missile first.", parent=self)
             return
 
         name = simpledialog.askstring("Save Scenario", "Enter scenario name:", parent=self)
@@ -1328,8 +1569,10 @@ class MissileSimulatorApp(tk.Tk):
                 destination=None,
                 launched=False,
                 impact=None,
-                fly_to={"lon": 0.0, "lat": 20.0, "height": 18000000.0, "fly_id": id(self)},
+                fly_to={"lon": 0.0, "lat": 20.0, "height": 18000000.0, "fly_id": self._next_fly_id()},
             )
+        self._set_pick_mode("origin")
+        self.status_var.set("Cleared. Click the globe or search to place the launch site.")
         for widget in self.results_container.winfo_children():
             widget.destroy()
         self.placeholder_lbl = tk.Label(
@@ -1338,7 +1581,7 @@ class MissileSimulatorApp(tk.Tk):
             fg=COLOR_MUTED,
             bg=COLOR_MAIN_BG,
             font=FONT_NORMAL,
-            wraplength=340,
+            wraplength=px(340),
             justify="center",
             padx=12,
             pady=40,
@@ -1364,6 +1607,8 @@ def launch_simulator_app() -> None:
         if app_ref["app"]:
             app_ref["app"].on_globe_pick(role, lon, lat)
 
+    enable_dpi_awareness()
+
     # use dynamic os assigned port (port=0)
     bridge = GlobeBridgeServer(on_globe_pick=on_globe_pick_callback)
     globe_url = bridge.start()
@@ -1384,7 +1629,6 @@ def launch_simulator_app() -> None:
     win = webview.create_window(
         title="Missile Simulator Globe Viewport",
         url=globe_url,
-        js_api=api,
         width=app.current_width,
         height=app.current_height,
         text_select=False,
