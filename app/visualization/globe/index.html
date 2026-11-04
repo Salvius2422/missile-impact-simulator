@@ -248,7 +248,7 @@
       }
 
       // click without dragging places or moves pin
-      if (!hasMovedPastThreshold) {
+      if (!hasMovedPastThreshold && currentPickMode !== "none") {
         const ray = viewer.camera.getPickRay(movement.position);
         const cartesian = viewer.scene.globe.pick(ray, viewer.scene);
         if (cartesian) {
@@ -558,7 +558,8 @@
 
         if (state.pick_mode && state.pick_mode !== currentPickMode) {
           currentPickMode = state.pick_mode;
-          const modeLabel = currentPickMode === "origin" ? "Launch site" : "Target";
+          const modeLabel = currentPickMode === "origin" ? "Launch site"
+            : currentPickMode === "none" ? "Off (drag a pin to move it)" : "Target";
           const pill = document.getElementById("pillModeText");
           if (pill) pill.innerText = "Map Click Mode: " + modeLabel;
         }
