@@ -515,6 +515,7 @@ class MissileSimulatorApp(tk.Tk):
         self.is_in_range: bool = False
         self.active_pick_mode: str = "origin"  # place the launch site first, then the target
         self._fly_seq: int = 0
+        self._pick_seq: Dict[str, int] = {}  # per-pin click counter, drops stale lookup results
 
         self._configure_styles()
         self._build_menu()
@@ -911,8 +912,12 @@ class MissileSimulatorApp(tk.Tk):
         return self._fly_seq
 
     def _advance_to_target_mode(self) -> None:
-        """after the launch site is placed, map clicks place the target next"""
-        if self.origin_candidate and not self.dest_candidate and self.active_pick_mode == "origin":
+        """after the launch site is placed, map clicks place the target next; once both
+        are placed, map-click mode switches off so neither pick button stays highlighted"""
+        if self.origin_candidate and self.dest_candidate:
+            if self.active_pick_mode != "none":
+                self._set_pick_mode("none")
+        elif self.origin_candidate and self.active_pick_mode == "origin":
             self._set_pick_mode("destination")
 
     @staticmethod
@@ -1095,6 +1100,11 @@ class MissileSimulatorApp(tk.Tk):
             self.pick_orig_btn.set_kind("selected-origin")
             self.pick_dest_btn.set_kind("secondary")
             self.status_var.set("Click the globe to place the launch site")
+        elif mode == "none":
+            # both pins placed: clicks no longer move them until a pick button is pressed
+            self.pick_orig_btn.set_kind("secondary")
+            self.pick_dest_btn.set_kind("secondary")
+            self.status_var.set("Both sites placed. Drag a pin, or press a Pick button to move one.")
         else:
             self.pick_dest_btn.set_kind("selected-target")
             self.pick_orig_btn.set_kind("secondary")
@@ -1136,6 +1146,7 @@ class MissileSimulatorApp(tk.Tk):
 
         self._update_range_and_pins()
         self._update_assessment_preview()
+        self._advance_to_target_mode()
 
     def _apply_population_update(self, pop: Dict[str, Any]) -> None:
         self.current_pop_info = pop
@@ -1145,8 +1156,22 @@ class MissileSimulatorApp(tk.Tk):
         self._update_assessment_preview()
 
     def on_globe_pick(self, role: str, lon: float, lat: float) -> None:
-        """callback invoked from bridge server when user clicks or drags pin on globe"""
-        def _worker():
+        """callback invoked from bridge server when user clicks or drags pin on globe.
+
+        the pin is placed at once with a coordinate label; the place name and population
+        come from slow network lookups, so they run in parallel and fill in when they land.
+        """
+        self._pick_seq[role] = self._pick_seq.get(role, 0) + 1
+        seq = self._pick_seq[role]
+        placeholder = PlaceCandidate(
+            label=f"Coordinates ({lat:.3f}, {lon:.3f})",
+            longitude=lon,
+            latitude=lat,
+            provider_place_id="manual-pin",
+        )
+        self.after(0, lambda: self._apply_globe_pick(role, placeholder, seq, provisional=True))
+
+        def _name_worker():
             try:
                 cand_data = self.api.reverse_geocode(lon, lat)
                 cand = PlaceCandidate(
@@ -1157,34 +1182,36 @@ class MissileSimulatorApp(tk.Tk):
                     attribution=cand_data.get("attribution", "OpenStreetMap"),
                 )
             except Exception:
-                cand = PlaceCandidate(
-                    label=f"Coordinates ({lat:.3f}, {lon:.3f})",
-                    longitude=lon,
-                    latitude=lat,
-                    provider_place_id="manual-pin",
-                )
+                return  # keep the coordinate label
+            self.after(0, lambda: self._apply_globe_pick(role, cand, seq))
 
-            pop_data = None
-            if role == "destination":
-                pop_data = self.api.get_population(lon, lat, cand.label)
+        def _pop_worker():
+            pop_data = self.api.get_population(lon, lat, "")
+            self.after(0, lambda: self._apply_pick_population(pop_data, seq))
 
-            self.after(0, lambda: self._apply_globe_pick(role, cand, pop_data))
+        threading.Thread(target=_name_worker, daemon=True).start()
+        if role == "destination":
+            threading.Thread(target=_pop_worker, daemon=True).start()
 
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def _apply_globe_pick(self, role: str, cand: PlaceCandidate, pop_data: Optional[Dict[str, Any]]) -> None:
+    def _apply_globe_pick(self, role: str, cand: PlaceCandidate, seq: int, provisional: bool = False) -> None:
+        if seq != self._pick_seq.get(role):
+            return  # a newer click on this pin has superseded this result
         if role == "origin":
             self.origin_candidate = cand
             self.origin_panel.set_place(cand)
-            self._advance_to_target_mode()
         else:
             self.dest_candidate = cand
             self.dest_panel.set_place(cand)
-            if pop_data:
-                self._apply_population_update(pop_data)
-
+            if provisional:
+                self.current_pop_info = None
+                self.target_pop_var.set("Population: looking up...")
+        self._advance_to_target_mode()
         self._update_range_and_pins()
         self._update_assessment_preview()
+
+    def _apply_pick_population(self, pop_data: Dict[str, Any], seq: int) -> None:
+        if seq == self._pick_seq.get("destination"):
+            self._apply_population_update(pop_data)
 
     def _update_range_and_pins(self) -> None:
         # inputs changed, so any blast rings on the globe belong to an old launch
