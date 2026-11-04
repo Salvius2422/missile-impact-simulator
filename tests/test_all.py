@@ -6,10 +6,10 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.data.models import Scenario
+from app.data.database import Scenario
 from app.data.database import ScenarioDatabase
-from app.services.mapbox_geocoding import MapboxGeocodingService
-from app.services.distance_service import calculate_great_circle_distance_km
+from app.services.geocoding import GeocodingService
+from app.services.impact_physics import calculate_great_circle_distance_km
 from app.services.impact_physics import load_missiles, check_within_range, compute_impact_effects
 
 
@@ -81,7 +81,7 @@ class TestMissileSimulator(unittest.TestCase):
         self.assertGreater(effects["flight_time_avg_min"], effects["flight_time_top_min"])
 
     def test_offline_geocoding_fallback(self):
-        geo = MapboxGeocodingService()
+        geo = GeocodingService()
         candidates = geo.search_city("Delhi")
         self.assertGreaterEqual(len(candidates), 1)
         self.assertIn("Delhi", candidates[0].label)
@@ -122,14 +122,9 @@ class TestMissileSimulator(unittest.TestCase):
         db_path.unlink(missing_ok=True)
 
     def test_simulator_api(self):
-        from app.services.webview_api import SimulatorApi
+        from app.services.bridge_server import SimulatorApi
         api = SimulatorApi()
-        missiles = api.get_missiles()
-        self.assertGreaterEqual(len(missiles), 50)
-
-        res = api.search_city("Delhi")
-        self.assertTrue(res["success"])
-        self.assertGreater(len(res["candidates"]), 0)
+        self.assertGreaterEqual(len(api.missiles), 50)
 
         rev = api.reverse_geocode(77.2090, 28.6139)
         self.assertIn("longitude", rev)
@@ -177,9 +172,6 @@ class TestMissileSimulator(unittest.TestCase):
             is_nuclear=True,
             nuclear_yield_kt=250.0,
             pop_density_per_km2=2603.0,
-            target_population=289333,
-            target_lon=77.0178,
-            target_lat=28.9931,
         )
         
         # delhi target
@@ -189,9 +181,6 @@ class TestMissileSimulator(unittest.TestCase):
             is_nuclear=True,
             nuclear_yield_kt=250.0,
             pop_density_per_km2=11300.0,
-            target_population=11034555,
-            target_lon=77.2167,
-            target_lat=28.6667,
         )
         
         # verify distinct values

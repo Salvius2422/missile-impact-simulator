@@ -2,12 +2,12 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Callable, List, Optional
-from app.data.models import PlaceCandidate
-from app.services.mapbox_geocoding import MapboxGeocodingService, GeocodingError
+from app.data.database import PlaceCandidate
+from app.services.geocoding import GeocodingService, GeocodingError
 
-COLOR_PANEL_BG = "#1e293b"
-COLOR_TEXT = "#f8fafc"
-COLOR_MUTED = "#94a3b8"
+COLOR_PANEL_BG = "#0a0a0a"
+COLOR_TEXT = "#ededed"
+COLOR_MUTED = "#8a8a8a"
 FONT_BOLD = ("Segoe UI", 9, "bold")
 FONT_NORMAL = ("Segoe UI", 9)
 
@@ -19,7 +19,7 @@ class CitySearchPanel(ttk.LabelFrame):
         self,
         parent: tk.Widget,
         title: str,
-        geocoding_service: MapboxGeocodingService,
+        geocoding_service: GeocodingService,
         on_selection_changed: Optional[Callable[[Optional[PlaceCandidate]], None]] = None,
     ):
         super().__init__(parent, text=title, padding=8)

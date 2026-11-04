@@ -36,7 +36,7 @@ Concentric hazard radii scale with explosive yield `Y` (in kilotons TNT equivale
 - **Fireball Radius**: `r_fireball = 0.09 * Y^0.40` km
 - **Heavy Blast (20 psi)**: `r_20psi = 0.28 * Y^(1/3)` km (98% fatalities, 99% structures destroyed)
 - **Moderate Blast (5 psi)**: `r_5psi = 0.70 * Y^(1/3)` km (50% fatalities, 75% structures destroyed)
-- **Thermal Radiation (3rd-deg burns)**: `r_thermal = 1.20 * Y^0.41` km (nuclear) or `0.35 * Y^(1/3)` km (conventional)
+- **Thermal Radiation (3rd-deg burns)**: `r_thermal = 0.67 * Y^0.41` km (nuclear) or `0.35 * Y^(1/3)` km (conventional)
 - **Light Blast (1 psi)**: `r_1psi = 1.90 * Y^(1/3)` km (5% fatalities, 35% injuries)
 
 Flight time is computed from great-circle distance using:
@@ -68,7 +68,7 @@ Flight time is computed from great-circle distance using:
 ## Project Structure
 
 ```
-├── requirements.txt            # dependencies (requests, python-dotenv, pywebview)
+├── requirements.txt            # dependencies (requests, pywebview)
 ├── run_simulator.bat           # batch launcher script
 ├── scenarios.db                # local sqlite scenario and population cache
 ├── README.md                   # project documentation
@@ -78,15 +78,11 @@ Flight time is computed from great-circle distance using:
 │   │   ├── main_window.py      # tkinter 3-column interface and pywebview embedding
 │   │   └── city_search.py      # city search and autocomplete panel
 │   ├── services/
-│   │   ├── webview_api.py      # bridge api connecting frontend and calculation services
-│   │   ├── bridge_server.py    # local http server with dynamic port allocation
-│   │   ├── impact_physics.py   # glasstone-dolan blast scaling and speed statistics
-│   │   ├── distance_service.py # great-circle haversine calculation
-│   │   ├── mapbox_geocoding.py # forward and reverse geocoding via nominatim
-│   │   └── population_service.py # population queries with local sqlite cache
+│   │   ├── bridge_server.py    # simulator api + local http server linking tkinter and the globe
+│   │   ├── impact_physics.py   # great-circle distance, glasstone-dolan blast scaling, speed stats
+│   │   └── geocoding.py        # city search, reverse geocoding, population lookup with sqlite cache
 │   ├── data/
-│   │   ├── models.py           # dataclasses for places and scenarios
-│   │   ├── database.py         # sqlite scenario storage with auto-migration
+│   │   ├── database.py         # place/scenario dataclasses and sqlite scenario storage
 │   │   └── reference_data.json # 58 missile systems dataset
 │   └── visualization/
 │       └── globe/
